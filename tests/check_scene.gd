@@ -42,7 +42,13 @@ func _process(_delta: float) -> bool:
 		if ui.btn_skip == null: problems.append("btn_skip not resolved")
 		if ui.btn_new_puzzle == null: problems.append("btn_new_puzzle not resolved")
 		if ui.btn_mode == null: problems.append("btn_mode not resolved")
-		if ui.option_turns == null: problems.append("option_turns not resolved")
+		if ui.btn_turns == null: problems.append("btn_turns not resolved")
+		if ui.btn_eraser == null: problems.append("btn_eraser not resolved")
+		# The icon buttons must reflect the state they were initialised with
+		if ui.btn_eraser != null and ui.btn_eraser.icon_state != ui.erasure_shape:
+			problems.append("eraser icon out of sync with erasure_shape")
+		if ui.btn_turns != null and ui.btn_turns.icon_state != ui.selected_turn_limit:
+			problems.append("turns icon out of sync with selected_turn_limit")
 		if ui.current_puzzle == null: problems.append("no puzzle generated on ready")
 		else:
 			if ui.turn_timeline.max_turns != ui.current_puzzle.max_turns:

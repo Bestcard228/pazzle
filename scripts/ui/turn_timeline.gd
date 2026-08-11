@@ -79,40 +79,66 @@ func _draw_cell(rect: Rect2, turn: int) -> void:
 		rect.size.x - pad * 2.0, rect.size.x - pad * 2.0)
 	draw_rect(mini, Color(COLOR_MINI_BG.r, COLOR_MINI_BG.g, COLOR_MINI_BG.b, dim))
 
-	var wipe := _phase_sub_rect(mini, phase)
 	var wipe_alpha := 0.9 if is_current else 0.6
-	draw_rect(wipe, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, wipe_alpha * dim))
+	draw_colored_polygon(_phase_sub_polygon(mini, phase),
+		Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, wipe_alpha * dim))
 
-	# Divider along the cut axis so the direction reads at a glance
-	_draw_cut_axis(mini, phase, dim)
+	# Division lines so the slice shape reads at a glance
+	_draw_division(mini, phase, dim)
 
 	# Marker for a turn the player committed a shape on
 	if turn < drawn_turns.size() and drawn_turns[turn]:
 		var dot := Vector2(rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 7.0)
 		draw_circle(dot, 3.5, Color(COLOR_DRAWN.r, COLOR_DRAWN.g, COLOR_DRAWN.b, dim))
 
-func _phase_sub_rect(mini: Rect2, phase: int) -> Rect2:
-	var h := mini.size.x * 0.5
-	var v := mini.size.y * 0.5
+func _is_wedge_mode() -> bool:
+	return board_def != null and board_def.erasure_shape == EraserSystem.ErasureShape.DIAGONAL_WEDGE
+
+# The slice this turn erases: a triangular wedge running to a corner in X mode, or half
+# the tile in half-plane mode.
+func _phase_sub_polygon(mini: Rect2, phase: int) -> PackedVector2Array:
+	var c := mini.position + mini.size * 0.5
+	var lo := mini.position
+	var hi := mini.position + mini.size
+
+	if _is_wedge_mode():
+		match posmod(phase, EraserSystem.PHASE_COUNT):
+			EraserSystem.ErasureRegion.TOP:
+				return PackedVector2Array([c, lo, Vector2(hi.x, lo.y)])
+			EraserSystem.ErasureRegion.RIGHT:
+				return PackedVector2Array([c, Vector2(hi.x, lo.y), hi])
+			EraserSystem.ErasureRegion.BOTTOM:
+				return PackedVector2Array([c, hi, Vector2(lo.x, hi.y)])
+			EraserSystem.ErasureRegion.LEFT:
+				return PackedVector2Array([c, Vector2(lo.x, hi.y), lo])
+			_:
+				return PackedVector2Array()
 
 	match posmod(phase, EraserSystem.PHASE_COUNT):
 		EraserSystem.ErasureRegion.TOP:
-			return Rect2(mini.position, Vector2(mini.size.x, v))
+			return PackedVector2Array([lo, Vector2(hi.x, lo.y), Vector2(hi.x, c.y), Vector2(lo.x, c.y)])
 		EraserSystem.ErasureRegion.RIGHT:
-			return Rect2(mini.position + Vector2(h, 0), Vector2(h, mini.size.y))
+			return PackedVector2Array([Vector2(c.x, lo.y), Vector2(hi.x, lo.y), hi, Vector2(c.x, hi.y)])
 		EraserSystem.ErasureRegion.BOTTOM:
-			return Rect2(mini.position + Vector2(0, v), Vector2(mini.size.x, v))
+			return PackedVector2Array([Vector2(lo.x, c.y), Vector2(hi.x, c.y), hi, Vector2(lo.x, hi.y)])
 		EraserSystem.ErasureRegion.LEFT:
-			return Rect2(mini.position, Vector2(h, mini.size.y))
+			return PackedVector2Array([lo, Vector2(c.x, lo.y), Vector2(c.x, hi.y), Vector2(lo.x, hi.y)])
 		_:
-			return Rect2()
+			return PackedVector2Array()
 
-func _draw_cut_axis(mini: Rect2, phase: int, dim: float) -> void:
+func _draw_division(mini: Rect2, phase: int, dim: float) -> void:
 	var c := mini.position + mini.size * 0.5
-	var line_color := Color(1.0, 1.0, 1.0, 0.45 * dim)
+	var lo := mini.position
+	var hi := mini.position + mini.size
+	var line_color := Color(1.0, 1.0, 1.0, 0.4 * dim)
+
+	if _is_wedge_mode():
+		draw_line(lo, hi, line_color, 1.0)
+		draw_line(Vector2(hi.x, lo.y), Vector2(lo.x, hi.y), line_color, 1.0)
+		return
 
 	match posmod(phase, EraserSystem.PHASE_COUNT):
 		EraserSystem.ErasureRegion.TOP, EraserSystem.ErasureRegion.BOTTOM:
-			draw_line(Vector2(mini.position.x, c.y), Vector2(mini.position.x + mini.size.x, c.y), line_color, 1.5)
+			draw_line(Vector2(lo.x, c.y), Vector2(hi.x, c.y), line_color, 1.5)
 		EraserSystem.ErasureRegion.RIGHT, EraserSystem.ErasureRegion.LEFT:
-			draw_line(Vector2(c.x, mini.position.y), Vector2(c.x, mini.position.y + mini.size.y), line_color, 1.5)
+			draw_line(Vector2(c.x, lo.y), Vector2(c.x, hi.y), line_color, 1.5)

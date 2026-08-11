@@ -4,6 +4,7 @@ extends Node2D
 const COLOR_BOARD_FILL := Color(0.11, 0.13, 0.20, 1.0)
 const COLOR_BOARD_RING := Color(0.30, 0.35, 0.45, 0.5)
 const COLOR_DEAD_ZONE := Color(0.03, 0.03, 0.06, 0.55)
+const COLOR_DIVIDER := Color(0.45, 0.52, 0.66, 0.45)
 const COLOR_WARN := Color(0.95, 0.30, 0.35)
 const COLOR_NODE := Color(0.40, 0.70, 1.00)
 const COLOR_NODE_ACTIVE := Color(0.20, 0.95, 0.50)
@@ -94,8 +95,36 @@ func grid_to_screen(grid_pos: Vector2) -> Vector2:
 	var scale_factor := board_radius_screen / board_def.radius
 	return board_center_screen + offset * scale_factor
 
-# Screen-space rect for an erasure phase, matching the half-plane regions the simulator
-# actually clips against.
+func _is_wedge_mode() -> bool:
+	return board_def != null and board_def.erasure_shape == EraserSystem.ErasureShape.DIAGONAL_WEDGE
+
+# Screen-space polygon for an erasure phase. In wedge mode this is the 90-degree slice cut
+# by the X; in half-plane mode it is the old half of the board. Either way it matches the
+# area the simulator actually clips against.
+func _phase_polygon(phase: int) -> PackedVector2Array:
+	var reach := board_radius_screen * 1.35
+	var c := board_center_screen
+
+	if _is_wedge_mode():
+		var axis := EraserSystem.get_phase_axis(phase)
+		# Reach past the corner so the wedge always covers the visible field
+		var corner_reach := reach * 1.45
+		return PackedVector2Array([
+			c,
+			c + axis.rotated(-PI / 4.0) * corner_reach,
+			c + axis * corner_reach,
+			c + axis.rotated(PI / 4.0) * corner_reach,
+		])
+
+	var r := _phase_rect(phase)
+	return PackedVector2Array([
+		r.position,
+		r.position + Vector2(r.size.x, 0),
+		r.position + r.size,
+		r.position + Vector2(0, r.size.y),
+	])
+
+# Screen-space rect for a half-plane erasure phase.
 func _phase_rect(phase: int) -> Rect2:
 	var extent := board_radius_screen * 1.35
 	var c := board_center_screen
@@ -126,6 +155,7 @@ func _draw() -> void:
 		return
 
 	_draw_board_face()
+	_draw_division_lines()
 	_draw_dead_zone()
 	_draw_upcoming_erasure()
 	_draw_node_ring()
@@ -142,29 +172,53 @@ func _draw_board_face() -> void:
 func _draw_dead_zone() -> void:
 	if applied_erasure_phase < 0:
 		return
-	draw_rect(_phase_rect(applied_erasure_phase), COLOR_DEAD_ZONE)
+	draw_colored_polygon(_phase_polygon(applied_erasure_phase), COLOR_DEAD_ZONE)
+
+# The standing division of the field: an X through the centre in wedge mode, a single
+# axis in half-plane mode. Always visible, so the player can see which slice any part of
+# their drawing sits in before committing to it.
+func _draw_division_lines() -> void:
+	var reach := board_radius_screen * 1.12
+	var c := board_center_screen
+
+	if _is_wedge_mode():
+		for diagonal in [Vector2(1, 1).normalized(), Vector2(1, -1).normalized()]:
+			draw_line(c - diagonal * reach, c + diagonal * reach, COLOR_DIVIDER, 2.0)
+	else:
+		draw_line(c - Vector2(reach, 0), c + Vector2(reach, 0), COLOR_DIVIDER, 2.0)
+		draw_line(c - Vector2(0, reach), c + Vector2(0, reach), COLOR_DIVIDER, 2.0)
 
 func _draw_upcoming_erasure() -> void:
 	if upcoming_erasure_phase < 0:
 		return
 
-	var rect := _phase_rect(upcoming_erasure_phase)
 	var pulse := 0.5 + 0.5 * sin(_pulse_t * 3.0)
+	var wash := Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, lerp(0.10, 0.22, pulse))
+	var stripe := Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.30)
+	var edge := Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.85)
 
 	# Body: soft warning wash that breathes
-	draw_rect(rect, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, lerp(0.10, 0.22, pulse)))
+	draw_colored_polygon(_phase_polygon(upcoming_erasure_phase), wash)
 
-	# Hatching makes the doomed side legible even for colour-blind players and even if
-	# the wash is missed against the dark background.
-	_draw_hatch(rect, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.30), 16.0, 2.0)
-
-	# The cut line itself, along the centre axis
 	var dir := _phase_direction(upcoming_erasure_phase)
-	var axis := Vector2(dir.y, dir.x).abs()
-	var half := board_radius_screen * 1.3
-	var a := board_center_screen - axis * half
-	var b := board_center_screen + axis * half
-	draw_line(a, b, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.85), 3.0)
+	var reach := board_radius_screen * 1.28
+
+	if _is_wedge_mode():
+		# Radial teeth fanning across the wedge, plus its two arms of the X lit up. Texture
+		# keeps the doomed slice legible without relying on the red wash alone.
+		var arm_a := dir.rotated(-PI / 4.0)
+		var arm_b := dir.rotated(PI / 4.0)
+		for i in range(1, 8):
+			var ray := arm_a.rotated((PI / 2.0) * (float(i) / 8.0))
+			draw_line(board_center_screen, board_center_screen + ray * reach, stripe, 2.0)
+		draw_line(board_center_screen, board_center_screen + arm_a * reach, edge, 3.0)
+		draw_line(board_center_screen, board_center_screen + arm_b * reach, edge, 3.0)
+	else:
+		var rect := _phase_rect(upcoming_erasure_phase)
+		_draw_hatch(rect, stripe, 16.0, 2.0)
+		# The cut line itself, along the centre axis
+		var axis := Vector2(dir.y, dir.x).abs()
+		draw_line(board_center_screen - axis * reach, board_center_screen + axis * reach, edge, 3.0)
 
 	# A blade marker riding the outer edge, pointing at what it is about to remove
 	_draw_blade_marker(dir, pulse)

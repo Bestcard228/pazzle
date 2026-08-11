@@ -21,8 +21,8 @@ static func simulate_up_to_turn(solution: PuzzleSolution, board_def: BoardDefini
 		if action != null and action.shape_instance != null and action.shape_instance.geometry != null:
 			current_drawing.merge(action.shape_instance.geometry)
 
-		var erased_rect := EraserSystem.get_erasure_rect_for_turn(t, board_def)
-		current_drawing = GeometryClipper.clip_geometry_out(current_drawing, erased_rect)
+		var erased_area := EraserSystem.get_erasure_region_for_turn(t, board_def)
+		current_drawing = GeometryClipper.clip_geometry_out(current_drawing, erased_area)
 
 	return current_drawing.canonicalize()
 
@@ -55,7 +55,7 @@ static func get_survivable_turns(board_def: BoardDefinition, max_turns: int) -> 
 	for t in range(max_turns):
 		var geom := probe.duplicate_geometry()
 		for u in range(t, max_turns):
-			geom = GeometryClipper.clip_geometry_out(geom, EraserSystem.get_erasure_rect_for_turn(u, board_def))
+			geom = GeometryClipper.clip_geometry_out(geom, EraserSystem.get_erasure_region_for_turn(u, board_def))
 			if geom.is_empty():
 				break
 		if not geom.is_empty():
@@ -64,7 +64,10 @@ static func get_survivable_turns(board_def: BoardDefinition, max_turns: int) -> 
 	return result
 
 # A maximally spread-out drawing: the full node ring plus every long diagonal. If this
-# cannot survive a run of erasures, nothing can.
+# cannot survive a run of erasures, nothing can — which also means the window it yields
+# is an upper bound, not a promise that ordinary shapes reach every turn in it. Under the
+# half-plane eraser in particular, the diameters sit exactly on the centre axis and slip
+# through, so the window reads one turn wider than most shapes can actually use.
 static func _build_board_probe_geometry(board_def: BoardDefinition) -> VectorGeometry:
 	var geom := VectorGeometry.new()
 	var n := board_def.node_count

@@ -77,6 +77,12 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_last_draw_not_always_final_turn")
 
+	if test_both_eraser_shapes_generate():
+		passed += 1
+		print("  [PASS] test_both_eraser_shapes_generate")
+	else:
+		print("  [FAIL] test_both_eraser_shapes_generate")
+
 	return passed
 
 static func test_puzzle_generation() -> bool:
@@ -264,3 +270,37 @@ static func test_last_draw_not_always_final_turn() -> bool:
 			early_finishes += 1
 
 	return early_finishes > 0
+
+# The wedge eraser is the default and must produce genuine three-shape puzzles; the
+# legacy half-plane eraser must still generate valid two-shape ones.
+static func test_both_eraser_shapes_generate() -> bool:
+	if BoardDefinition.new(8).erasure_shape != EraserSystem.ErasureShape.DIAGONAL_WEDGE:
+		return false # wedge must be the default
+
+	var wedge_board := BoardDefinition.new(8, Vector2(64, 64), 0, EraserSystem.ErasureShape.DIAGONAL_WEDGE)
+	var half_board := BoardDefinition.new(8, Vector2(64, 64), 0, EraserSystem.ErasureShape.HALF_PLANE)
+
+	var wedge_puzzle := PuzzleGenerator.generate_puzzle(wedge_board, 0, 3, false)
+	var half_puzzle := PuzzleGenerator.generate_puzzle(half_board, 0, 3, false)
+
+	for puzzle in [wedge_puzzle, half_puzzle]:
+		if puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
+			return false
+		# The puzzle must carry its own eraser shape through to replay
+		if not PuzzleSimulator.simulate(puzzle.reference_solution, puzzle.board_definition) \
+				.is_equivalent_to(puzzle.target_geometry):
+			return false
+		if not PuzzleValidator.validate_necessary_contributions(
+				puzzle.reference_solution, puzzle.target_geometry, puzzle.board_definition):
+			return false
+
+	if wedge_puzzle.board_definition.erasure_shape != EraserSystem.ErasureShape.DIAGONAL_WEDGE:
+		return false
+	if half_puzzle.board_definition.erasure_shape != EraserSystem.ErasureShape.HALF_PLANE:
+		return false
+
+	# Both modes expose three live turns, so a three-shape puzzle is reachable in each
+	if wedge_puzzle.required_shape_count != 3: return false
+	if half_puzzle.required_shape_count != 3: return false
+
+	return true

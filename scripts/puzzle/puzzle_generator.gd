@@ -22,6 +22,9 @@ static func generate_puzzle(
 ) -> PuzzleData:
 	if board_def == null:
 		board_def = BoardDefinition.new(8)
+	# Under the wedge eraser most shapes survive two erasures, so the third-from-last turn
+	# is genuinely usable; under the half-plane eraser only centre-seam shapes get there.
+	# `shape_count` below is clamped to the board's own survivable window either way.
 
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()

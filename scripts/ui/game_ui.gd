@@ -9,6 +9,10 @@ var game_cleared: bool = false
 var is_easy_mode: bool = false
 var selected_turn_limit: int = 0 # 0 means random 4-7 turns
 
+# Tapping the turns button steps through these
+const TURN_CHOICES: Array[int] = [0, 4, 5, 6, 7]
+var erasure_shape: int = EraserSystem.ErasureShape.DIAGONAL_WEDGE
+
 @onready var drawing_board: DrawingBoard = $DrawingBoard
 @onready var input_handler: InputHandler = $InputHandler
 @onready var target_display: TargetDisplay = $HUD/TargetDisplay
@@ -17,44 +21,58 @@ var selected_turn_limit: int = 0 # 0 means random 4-7 turns
 @onready var btn_reset: Button = $Controls/BtnReset
 @onready var btn_skip: Button = $Controls/BtnSkip
 @onready var btn_new_puzzle: Button = $Controls/BtnNewPuzzle
-@onready var btn_mode: Button = $HUD/BtnModeToggle
-@onready var option_turns: OptionButton = $HUD/OptionTurns
+@onready var btn_mode: IconButton = $HUD/BtnModeToggle
+@onready var btn_eraser: IconButton = $HUD/BtnEraserToggle
+@onready var btn_turns: IconButton = $HUD/BtnTurns
 
 func _ready() -> void:
 	btn_reset.pressed.connect(_on_reset_pressed)
 	btn_skip.pressed.connect(_on_skip_pressed)
 	btn_new_puzzle.pressed.connect(_on_new_puzzle_pressed)
 	btn_mode.pressed.connect(_on_mode_toggled)
-
-	_setup_turns_option()
+	btn_eraser.pressed.connect(_on_eraser_toggled)
+	btn_turns.pressed.connect(_on_turns_cycled)
+	_refresh_selector_icons()
 
 	input_handler.shape_drawn.connect(_on_shape_drawn)
 	input_handler.active_path_changed.connect(_on_active_path_changed)
 
 	load_new_puzzle()
 
-func _setup_turns_option() -> void:
-	option_turns.clear()
-	option_turns.add_item("Random (4-7)", 0)
-	option_turns.add_item("4 Turns", 4)
-	option_turns.add_item("5 Turns", 5)
-	option_turns.add_item("6 Turns", 6)
-	option_turns.add_item("7 Turns", 7)
-	option_turns.select(0)
-	option_turns.item_selected.connect(_on_turns_selected)
-
-func _on_turns_selected(index: int) -> void:
-	selected_turn_limit = option_turns.get_item_id(index)
+func _on_turns_cycled() -> void:
+	var next := (TURN_CHOICES.find(selected_turn_limit) + 1) % TURN_CHOICES.size()
+	selected_turn_limit = TURN_CHOICES[next]
+	_refresh_selector_icons()
 	load_new_puzzle()
 
 func _on_mode_toggled() -> void:
 	is_easy_mode = not is_easy_mode
-	btn_mode.text = "MODE: EASY" if is_easy_mode else "MODE: NORMAL"
+	_refresh_selector_icons()
 	load_new_puzzle()
 
+func _on_eraser_toggled() -> void:
+	erasure_shape = (EraserSystem.ErasureShape.HALF_PLANE
+		if erasure_shape == EraserSystem.ErasureShape.DIAGONAL_WEDGE
+		else EraserSystem.ErasureShape.DIAGONAL_WEDGE)
+	_refresh_selector_icons()
+	load_new_puzzle()
+
+func _refresh_selector_icons() -> void:
+	btn_mode.set_icon_state(1 if is_easy_mode else 0)
+	btn_turns.set_icon_state(selected_turn_limit)
+	btn_eraser.set_icon_state(erasure_shape)
+
+	# Tooltips carry the wording the buttons no longer show
+	btn_mode.tooltip_text = "Difficulty: %s" % ("Easy" if is_easy_mode else "Normal")
+	btn_turns.tooltip_text = ("Turns: random 4-7" if selected_turn_limit <= 0
+		else "Turns: %d" % selected_turn_limit)
+	btn_eraser.tooltip_text = "Eraser: %s" % EraserSystem.get_shape_name(erasure_shape)
+
 func load_new_puzzle() -> void:
-	var board_def := BoardDefinition.new(8)
-	var req_shapes := 2 if is_easy_mode else (3 if selected_turn_limit >= 5 else 2)
+	var board_def := BoardDefinition.new(8, Vector2(64, 64), 0, erasure_shape)
+	# The generator clamps this to the board's real survivable window, so the wedge eraser
+	# gets genuine three-shape puzzles while the half-plane eraser still settles at two.
+	var req_shapes := 2 if is_easy_mode else 3
 
 	current_puzzle = PuzzleGenerator.generate_puzzle(board_def, selected_turn_limit, req_shapes, is_easy_mode)
 	current_solution = PuzzleSolution.new(current_puzzle.max_turns)

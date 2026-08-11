@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/ui/input_handler.gd" id="3_input"]
 [ext_resource type="Script" path="res://scripts/ui/target_display.gd" id="4_target"]
 [ext_resource type="Script" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
+[ext_resource type="Script" path="res://scripts/ui/icon_button.gd" id="6_icon"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font_size = 22
@@ -62,18 +63,32 @@ vertical_alignment = 1
 [node name="BtnModeToggle" type="Button" parent="HUD"]
 layout_mode = 1
 offset_left = 15.0
-offset_top = 75.0
-offset_right = 135.0
-offset_bottom = 105.0
-text = "MODE: NORMAL"
+offset_top = 72.0
+offset_right = 79.0
+offset_bottom = 120.0
+tooltip_text = "Difficulty"
+script = ExtResource("6_icon")
+icon_kind = 0
 
-[node name="OptionTurns" type="OptionButton" parent="HUD"]
+[node name="BtnTurns" type="Button" parent="HUD"]
 layout_mode = 1
-offset_left = 145.0
-offset_top = 75.0
-offset_right = 245.0
-offset_bottom = 105.0
-selected = 0
+offset_left = 89.0
+offset_top = 72.0
+offset_right = 153.0
+offset_bottom = 120.0
+tooltip_text = "Turns per puzzle"
+script = ExtResource("6_icon")
+icon_kind = 1
+
+[node name="BtnEraserToggle" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 163.0
+offset_top = 72.0
+offset_right = 227.0
+offset_bottom = 120.0
+tooltip_text = "Eraser shape"
+script = ExtResource("6_icon")
+icon_kind = 2
 
 [node name="TurnTimeline" type="Control" parent="HUD"]
 layout_mode = 1
