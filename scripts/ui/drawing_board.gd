@@ -1,10 +1,27 @@
 class_name DrawingBoard
 extends Node2D
 
+const COLOR_BOARD_FILL := Color(0.11, 0.13, 0.20, 1.0)
+const COLOR_BOARD_RING := Color(0.30, 0.35, 0.45, 0.5)
+const COLOR_DEAD_ZONE := Color(0.03, 0.03, 0.06, 0.55)
+const COLOR_WARN := Color(0.95, 0.30, 0.35)
+const COLOR_NODE := Color(0.40, 0.70, 1.00)
+const COLOR_NODE_ACTIVE := Color(0.20, 0.95, 0.50)
+const COLOR_INK := Color(0.95, 0.75, 0.20, 0.95)
+const COLOR_CLEARED := Color(0.20, 0.95, 0.50)
+
 var board_def: BoardDefinition
 var current_surviving_geometry: VectorGeometry
-var current_erasure_phase: int = -1 # -1 means no erasure visible yet
+
+# The region wiped at the end of the previous turn: already gone, shown as a dead zone.
+var applied_erasure_phase: int = -1
+# The region that will be wiped at the end of THIS turn. This is the single most
+# important thing on screen, so it pulses and is hatched rather than merely tinted.
+var upcoming_erasure_phase: int = -1
+
+var is_cleared: bool = false
 var active_swipe_nodes: Array[int] = []
+var _pulse_t: float = 0.0
 
 var node_screen_positions: Array[Vector2] = []
 var board_center_screen: Vector2 = Vector2(270, 490)
@@ -15,6 +32,14 @@ func _ready() -> void:
 		board_def = BoardDefinition.new(8)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	recompute_screen_positions()
+	set_process(true)
+
+func _process(delta: float) -> void:
+	# Only animate when there is something to warn about
+	if upcoming_erasure_phase < 0 and not is_cleared:
+		return
+	_pulse_t += delta
+	queue_redraw()
 
 func _on_viewport_size_changed() -> void:
 	recompute_screen_positions()
@@ -25,9 +50,17 @@ func set_board_definition(p_board_def: BoardDefinition) -> void:
 	recompute_screen_positions()
 	queue_redraw()
 
-func set_surviving_geometry(geom: VectorGeometry, erasure_phase: int) -> void:
+func set_surviving_geometry(geom: VectorGeometry) -> void:
 	self.current_surviving_geometry = geom
-	self.current_erasure_phase = erasure_phase
+	queue_redraw()
+
+func set_erasure_phases(p_applied: int, p_upcoming: int) -> void:
+	self.applied_erasure_phase = p_applied
+	self.upcoming_erasure_phase = p_upcoming
+	queue_redraw()
+
+func set_cleared(p_cleared: bool) -> void:
+	self.is_cleared = p_cleared
 	queue_redraw()
 
 func set_active_swipe(nodes: Array[int]) -> void:
@@ -55,83 +88,167 @@ func recompute_screen_positions() -> void:
 
 # Converts internal grid Vector2 to screen Vector2
 func grid_to_screen(grid_pos: Vector2) -> Vector2:
+	if board_def == null:
+		return grid_pos
 	var offset := grid_pos - board_def.center
 	var scale_factor := board_radius_screen / board_def.radius
 	return board_center_screen + offset * scale_factor
+
+# Screen-space rect for an erasure phase, matching the half-plane regions the simulator
+# actually clips against.
+func _phase_rect(phase: int) -> Rect2:
+	var extent := board_radius_screen * 1.35
+	var c := board_center_screen
+
+	match posmod(phase, EraserSystem.PHASE_COUNT):
+		EraserSystem.ErasureRegion.TOP:
+			return Rect2(c.x - extent, c.y - extent, extent * 2.0, extent)
+		EraserSystem.ErasureRegion.RIGHT:
+			return Rect2(c.x, c.y - extent, extent, extent * 2.0)
+		EraserSystem.ErasureRegion.BOTTOM:
+			return Rect2(c.x - extent, c.y, extent * 2.0, extent)
+		EraserSystem.ErasureRegion.LEFT:
+			return Rect2(c.x - extent, c.y - extent, extent, extent * 2.0)
+		_:
+			return Rect2()
+
+# Unit vector pointing from the board centre into the middle of a phase's region.
+func _phase_direction(phase: int) -> Vector2:
+	match posmod(phase, EraserSystem.PHASE_COUNT):
+		EraserSystem.ErasureRegion.TOP: return Vector2(0, -1)
+		EraserSystem.ErasureRegion.RIGHT: return Vector2(1, 0)
+		EraserSystem.ErasureRegion.BOTTOM: return Vector2(0, 1)
+		EraserSystem.ErasureRegion.LEFT: return Vector2(-1, 0)
+		_: return Vector2.ZERO
 
 func _draw() -> void:
 	if board_def == null:
 		return
 
-	_draw_erasure_overlay()
+	_draw_board_face()
+	_draw_dead_zone()
+	_draw_upcoming_erasure()
 	_draw_node_ring()
 	_draw_surviving_geometry()
 	_draw_active_swipe()
+	_draw_cleared_glow()
 
-func _draw_erasure_overlay() -> void:
-	if current_erasure_phase < 0:
+func _draw_board_face() -> void:
+	draw_circle(board_center_screen, board_radius_screen * 1.12, COLOR_BOARD_FILL)
+	draw_arc(board_center_screen, board_radius_screen, 0, TAU, 64, COLOR_BOARD_RING, 2.0)
+
+# What is already gone. Flat and dark so it reads as "dead", never confused with the
+# pulsing warning for what is about to go.
+func _draw_dead_zone() -> void:
+	if applied_erasure_phase < 0:
+		return
+	draw_rect(_phase_rect(applied_erasure_phase), COLOR_DEAD_ZONE)
+
+func _draw_upcoming_erasure() -> void:
+	if upcoming_erasure_phase < 0:
 		return
 
-	var rect_size := board_radius_screen * 2.4
-	var phase := current_erasure_phase % 4
+	var rect := _phase_rect(upcoming_erasure_phase)
+	var pulse := 0.5 + 0.5 * sin(_pulse_t * 3.0)
 
-	var overlay_color := Color(0.9, 0.2, 0.3, 0.18)
-	var border_color := Color(0.95, 0.3, 0.4, 0.6)
+	# Body: soft warning wash that breathes
+	draw_rect(rect, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, lerp(0.10, 0.22, pulse)))
 
-	var overlay_rect: Rect2
-	match phase:
-		EraserSystem.ErasureRegion.TOP:
-			overlay_rect = Rect2(board_center_screen.x - rect_size / 2, board_center_screen.y - rect_size / 2, rect_size, rect_size / 2)
-		EraserSystem.ErasureRegion.RIGHT:
-			overlay_rect = Rect2(board_center_screen.x, board_center_screen.y - rect_size / 2, rect_size / 2, rect_size)
-		EraserSystem.ErasureRegion.BOTTOM:
-			overlay_rect = Rect2(board_center_screen.x - rect_size / 2, board_center_screen.y, rect_size, rect_size / 2)
-		EraserSystem.ErasureRegion.LEFT:
-			overlay_rect = Rect2(board_center_screen.x - rect_size / 2, board_center_screen.y - rect_size / 2, rect_size / 2, rect_size)
+	# Hatching makes the doomed side legible even for colour-blind players and even if
+	# the wash is missed against the dark background.
+	_draw_hatch(rect, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.30), 16.0, 2.0)
 
-	draw_rect(overlay_rect, overlay_color)
+	# The cut line itself, along the centre axis
+	var dir := _phase_direction(upcoming_erasure_phase)
+	var axis := Vector2(dir.y, dir.x).abs()
+	var half := board_radius_screen * 1.3
+	var a := board_center_screen - axis * half
+	var b := board_center_screen + axis * half
+	draw_line(a, b, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, 0.85), 3.0)
 
-	match phase:
-		EraserSystem.ErasureRegion.TOP, EraserSystem.ErasureRegion.BOTTOM:
-			draw_line(Vector2(board_center_screen.x - rect_size / 2, board_center_screen.y), Vector2(board_center_screen.x + rect_size / 2, board_center_screen.y), border_color, 3.0)
-		EraserSystem.ErasureRegion.RIGHT, EraserSystem.ErasureRegion.LEFT:
-			draw_line(Vector2(board_center_screen.x, board_center_screen.y - rect_size / 2), Vector2(board_center_screen.x, board_center_screen.y + rect_size / 2), border_color, 3.0)
+	# A blade marker riding the outer edge, pointing at what it is about to remove
+	_draw_blade_marker(dir, pulse)
+
+func _draw_blade_marker(dir: Vector2, pulse: float) -> void:
+	var tip := board_center_screen + dir * (board_radius_screen * (1.20 + 0.05 * pulse))
+	var side := Vector2(-dir.y, dir.x) * 14.0
+	var back := tip + dir * 18.0
+
+	var pts := PackedVector2Array([tip, back + side, back - side])
+	draw_colored_polygon(pts, Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, lerp(0.6, 1.0, pulse)))
+
+# 45-degree hatch lines clipped to `rect`.
+func _draw_hatch(rect: Rect2, color: Color, spacing: float, width: float) -> void:
+	var dir := Vector2(1, 1).normalized()
+	var span := rect.size.x + rect.size.y
+	var steps := int(span / spacing)
+
+	for i in range(steps + 1):
+		var origin := Vector2(rect.position.x - rect.size.y + i * spacing, rect.position.y)
+		var seg := _clip_ray_to_rect(origin, dir, rect)
+		if seg.size() == 2:
+			draw_line(seg[0], seg[1], color, width)
+
+# Slab clip of an infinite line through `origin` along `dir` against an axis-aligned rect.
+func _clip_ray_to_rect(origin: Vector2, dir: Vector2, rect: Rect2) -> PackedVector2Array:
+	var t_min := -INF
+	var t_max := INF
+	var lo := rect.position
+	var hi := rect.position + rect.size
+
+	for axis in 2:
+		var o: float = origin[axis]
+		var d: float = dir[axis]
+		if absf(d) < 0.00001:
+			if o < lo[axis] or o > hi[axis]:
+				return PackedVector2Array()
+			continue
+		var t1 := (lo[axis] - o) / d
+		var t2 := (hi[axis] - o) / d
+		if t1 > t2:
+			var swap := t1
+			t1 = t2
+			t2 = swap
+		t_min = maxf(t_min, t1)
+		t_max = minf(t_max, t2)
+
+	if t_min >= t_max:
+		return PackedVector2Array()
+	return PackedVector2Array([origin + dir * t_min, origin + dir * t_max])
 
 func _draw_node_ring() -> void:
-	draw_arc(board_center_screen, board_radius_screen, 0, TAU, 64, Color(0.3, 0.35, 0.45, 0.4), 2.0)
-
 	for i in range(node_screen_positions.size()):
 		var pos := node_screen_positions[i]
 		var is_selected := active_swipe_nodes.has(i)
-
-		var node_color := Color(0.4, 0.7, 1.0) if not is_selected else Color(0.2, 0.95, 0.5)
-		var bg_color := Color(0.12, 0.14, 0.22)
+		var node_color := COLOR_NODE_ACTIVE if is_selected else COLOR_NODE
 
 		draw_circle(pos, 18.0, node_color)
-		draw_circle(pos, 14.0, bg_color)
+		draw_circle(pos, 14.0, COLOR_BOARD_FILL)
 		if is_selected:
-			draw_circle(pos, 8.0, Color(0.2, 0.95, 0.5, 0.8))
+			draw_circle(pos, 8.0, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.8))
 
 func _draw_surviving_geometry() -> void:
 	if current_surviving_geometry == null or current_surviving_geometry.is_empty():
 		return
 
-	var line_color := Color(0.95, 0.75, 0.2, 0.95)
-	var glow_color := Color(1.0, 0.85, 0.3, 0.35)
-
 	for seg in current_surviving_geometry.segments:
 		var s1 := grid_to_screen(seg.p1)
 		var s2 := grid_to_screen(seg.p2)
-
-		draw_line(s1, s2, glow_color, 8.0)
-		draw_line(s1, s2, line_color, 4.0)
+		draw_line(s1, s2, Color(1.0, 0.85, 0.3, 0.35), 8.0)
+		draw_line(s1, s2, COLOR_INK, 4.0)
 
 func _draw_active_swipe() -> void:
 	if active_swipe_nodes.size() < 2:
 		return
 
-	var active_color := Color(0.2, 0.95, 0.5, 0.9)
 	for i in range(active_swipe_nodes.size() - 1):
 		var p1 := node_screen_positions[active_swipe_nodes[i]]
 		var p2 := node_screen_positions[active_swipe_nodes[i + 1]]
-		draw_line(p1, p2, active_color, 4.0)
+		draw_line(p1, p2, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.9), 4.0)
+
+func _draw_cleared_glow() -> void:
+	if not is_cleared:
+		return
+	var pulse := 0.5 + 0.5 * sin(_pulse_t * 4.0)
+	draw_arc(board_center_screen, board_radius_screen * 1.12, 0, TAU, 72,
+		Color(COLOR_CLEARED.r, COLOR_CLEARED.g, COLOR_CLEARED.b, lerp(0.35, 0.9, pulse)), 5.0)

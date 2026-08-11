@@ -12,8 +12,7 @@ var selected_turn_limit: int = 0 # 0 means random 4-7 turns
 @onready var drawing_board: DrawingBoard = $DrawingBoard
 @onready var input_handler: InputHandler = $InputHandler
 @onready var target_display: TargetDisplay = $HUD/TargetDisplay
-@onready var label_turn: Label = $HUD/TurnLabel
-@onready var label_erasure: Label = $HUD/ErasureLabel
+@onready var turn_timeline: TurnTimeline = $HUD/TurnTimeline
 @onready var label_status: Label = $HUD/StatusLabel
 @onready var btn_reset: Button = $Controls/BtnReset
 @onready var btn_skip: Button = $Controls/BtnSkip
@@ -63,8 +62,10 @@ func load_new_puzzle() -> void:
 	game_cleared = false
 
 	drawing_board.set_board_definition(current_puzzle.board_definition)
+	drawing_board.set_cleared(false)
 	input_handler.setup(current_puzzle.board_definition, drawing_board.node_screen_positions)
 	target_display.set_target(current_puzzle.target_geometry, current_puzzle.board_definition)
+	turn_timeline.setup(current_puzzle.board_definition, current_puzzle.max_turns)
 
 	_update_ui()
 
@@ -95,13 +96,19 @@ func _check_victory() -> void:
 	var surviving := PuzzleSimulator.simulate_up_to_turn(current_solution, current_puzzle.board_definition, current_turn - 1)
 	if surviving.is_equivalent_to(current_puzzle.target_geometry):
 		game_cleared = true
-		label_status.text = "★ PUZZLE SOLVED! ★"
+		label_status.text = "★ SOLVED ★"
 		label_status.modulate = Color(0.2, 0.95, 0.5)
+		# The win reads off the board itself, not just the label
+		drawing_board.set_cleared(true)
+		drawing_board.set_erasure_phases(drawing_board.applied_erasure_phase, -1)
+		target_display.set_matched(true)
 
 func _on_reset_pressed() -> void:
 	current_solution = PuzzleSolution.new(current_puzzle.max_turns)
 	current_turn = 0
 	game_cleared = false
+	drawing_board.set_cleared(false)
+	target_display.set_matched(false)
 	_update_ui()
 
 func _on_new_puzzle_pressed() -> void:
@@ -111,23 +118,33 @@ func _on_active_path_changed(nodes: Array[int]) -> void:
 	drawing_board.set_active_swipe(nodes)
 
 func _update_ui() -> void:
+	var board := current_puzzle.board_definition
 	var max_t := current_puzzle.max_turns
-	if current_turn < max_t:
-		var current_erasure_name := EraserSystem.get_region_name_for_turn(current_turn, current_puzzle.board_definition)
-		label_turn.text = "TURN %d / %d" % [current_turn + 1, max_t]
-		label_erasure.text = "Next Erasure: %s" % current_erasure_name
-	else:
-		label_turn.text = "FINAL TURN"
-		label_erasure.text = "Simulation Complete"
+	var turns_remain := current_turn < max_t
 
-	# The per-turn prompt is gone; this label now only reports the win.
+	# Which turns the player has already committed a shape on
+	var drawn: Array[bool] = []
+	for t in range(max_t):
+		var act := current_solution.get_action(t)
+		drawn.append(act != null and act.shape_instance != null)
+	turn_timeline.set_progress(current_turn, drawn)
+
+	# The board carries the state: what is already gone, and what goes next.
+	var last_resolved_turn := current_turn - 1
+	var applied_phase := -1
+	if last_resolved_turn >= 0:
+		applied_phase = EraserSystem.get_phase_for_turn(last_resolved_turn, board)
+
+	var upcoming_phase := -1
+	if turns_remain and not game_cleared:
+		upcoming_phase = EraserSystem.get_phase_for_turn(current_turn, board)
+
+	var current_geom := PuzzleSimulator.simulate_up_to_turn(current_solution, board, last_resolved_turn)
+	drawing_board.set_surviving_geometry(current_geom)
+	drawing_board.set_erasure_phases(applied_phase, upcoming_phase)
+
+	btn_skip.disabled = game_cleared or not turns_remain
+
 	if not game_cleared:
 		label_status.text = ""
 		label_status.modulate = Color.WHITE
-
-	var last_resolved_turn := current_turn - 1
-	var current_geom := PuzzleSimulator.simulate_up_to_turn(current_solution, current_puzzle.board_definition, last_resolved_turn)
-	var active_erasure_phase := -1
-	if last_resolved_turn >= 0:
-		active_erasure_phase = EraserSystem.get_phase_for_turn(last_resolved_turn, current_puzzle.board_definition)
-	drawing_board.set_surviving_geometry(current_geom, active_erasure_phase)

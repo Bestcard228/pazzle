@@ -1,17 +1,15 @@
 [gd_scene load_steps=7 format=3 uid="uid://c8s7t1m9p4q0x"]
 
+
 [ext_resource type="Script" path="res://scripts/ui/game_ui.gd" id="1_ui"]
 [ext_resource type="Script" path="res://scripts/ui/drawing_board.gd" id="2_board"]
 [ext_resource type="Script" path="res://scripts/ui/input_handler.gd" id="3_input"]
 [ext_resource type="Script" path="res://scripts/ui/target_display.gd" id="4_target"]
+[ext_resource type="Script" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font_size = 22
 font_color = Color(0.9, 0.95, 1, 1)
-
-[sub_resource type="LabelSettings" id="LabelSettings_status"]
-font_size = 12
-font_color = Color(0.7, 0.75, 0.85, 1)
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -30,36 +28,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.08, 0.09, 0.14, 1)
-
-[node name="StatusBar" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_bottom = 32.0
-grow_horizontal = 2
-
-[node name="TimeLabel" type="Label" parent="StatusBar"]
-layout_mode = 1
-offset_left = 20.0
-offset_top = 6.0
-offset_right = 70.0
-offset_bottom = 26.0
-text = "9:41"
-label_settings = SubResource("LabelSettings_status")
-
-[node name="IconsLabel" type="Label" parent="StatusBar"]
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -100.0
-offset_top = 6.0
-offset_right = -15.0
-offset_bottom = 26.0
-grow_horizontal = 0
-text = "5G ⚡ 98%"
-label_settings = SubResource("LabelSettings_status")
-horizontal_alignment = 2
 
 [node name="DrawingBoard" type="Node2D" parent="."]
 script = ExtResource("2_board")
@@ -107,21 +75,17 @@ offset_right = 245.0
 offset_bottom = 105.0
 selected = 0
 
-[node name="TurnLabel" type="Label" parent="HUD"]
+[node name="TurnTimeline" type="Control" parent="HUD"]
 layout_mode = 1
-offset_left = 15.0
-offset_top = 115.0
-offset_right = 240.0
-offset_bottom = 138.0
-text = "TURN 1 / 4"
-
-[node name="ErasureLabel" type="Label" parent="HUD"]
-layout_mode = 1
-offset_left = 15.0
-offset_top = 138.0
-offset_right = 240.0
-offset_bottom = 161.0
-text = "Next Erasure: TOP"
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -255.0
+offset_top = 205.0
+offset_right = 255.0
+offset_bottom = 272.0
+grow_horizontal = 2
+script = ExtResource("5_timeline")
 
 [node name="TargetDisplay" type="Control" parent="HUD"]
 layout_mode = 1
@@ -141,7 +105,7 @@ offset_left = 5.0
 offset_top = 4.0
 offset_right = 120.0
 offset_bottom = 22.0
-text = "GOAL TARGET"
+text = "GOAL"
 horizontal_alignment = 1
 
 [node name="StatusLabel" type="Label" parent="HUD"]
