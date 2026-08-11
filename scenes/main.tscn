@@ -1,0 +1,215 @@
+[gd_scene load_steps=7 format=3 uid="uid://c8s7t1m9p4q0x"]
+
+[ext_resource type="Script" path="res://scripts/ui/game_ui.gd" id="1_ui"]
+[ext_resource type="Script" path="res://scripts/ui/drawing_board.gd" id="2_board"]
+[ext_resource type="Script" path="res://scripts/ui/input_handler.gd" id="3_input"]
+[ext_resource type="Script" path="res://scripts/ui/target_display.gd" id="4_target"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font_size = 22
+font_color = Color(0.9, 0.95, 1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_status"]
+font_size = 12
+font_color = Color(0.7, 0.75, 0.85, 1)
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ui")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.09, 0.14, 1)
+
+[node name="StatusBar" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 32.0
+grow_horizontal = 2
+
+[node name="TimeLabel" type="Label" parent="StatusBar"]
+layout_mode = 1
+offset_left = 20.0
+offset_top = 6.0
+offset_right = 70.0
+offset_bottom = 26.0
+text = "9:41"
+label_settings = SubResource("LabelSettings_status")
+
+[node name="IconsLabel" type="Label" parent="StatusBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 6.0
+offset_right = -15.0
+offset_bottom = 26.0
+grow_horizontal = 0
+text = "5G ⚡ 98%"
+label_settings = SubResource("LabelSettings_status")
+horizontal_alignment = 2
+
+[node name="DrawingBoard" type="Node2D" parent="."]
+script = ExtResource("2_board")
+
+[node name="InputHandler" type="Node2D" parent="."]
+script = ExtResource("3_input")
+
+[node name="HUD" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TitleLabel" type="Label" parent="HUD"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -180.0
+offset_top = 34.0
+offset_right = 180.0
+offset_bottom = 66.0
+grow_horizontal = 2
+text = "SHAPE TIMING PUZZLE"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BtnModeToggle" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 15.0
+offset_top = 75.0
+offset_right = 135.0
+offset_bottom = 105.0
+text = "MODE: NORMAL"
+
+[node name="OptionTurns" type="OptionButton" parent="HUD"]
+layout_mode = 1
+offset_left = 145.0
+offset_top = 75.0
+offset_right = 245.0
+offset_bottom = 105.0
+selected = 0
+
+[node name="TurnLabel" type="Label" parent="HUD"]
+layout_mode = 1
+offset_left = 15.0
+offset_top = 115.0
+offset_right = 240.0
+offset_bottom = 138.0
+text = "TURN 1 / 4"
+
+[node name="ErasureLabel" type="Label" parent="HUD"]
+layout_mode = 1
+offset_left = 15.0
+offset_top = 138.0
+offset_right = 240.0
+offset_bottom = 161.0
+text = "Next Erasure: TOP"
+
+[node name="TargetDisplay" type="Control" parent="HUD"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 70.0
+offset_right = -15.0
+offset_bottom = 195.0
+grow_horizontal = 0
+script = ExtResource("4_target")
+
+[node name="TargetTitle" type="Label" parent="HUD/TargetDisplay"]
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 120.0
+offset_bottom = 22.0
+text = "GOAL TARGET"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="HUD"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -180.0
+offset_right = 250.0
+offset_bottom = -150.0
+grow_horizontal = 2
+grow_vertical = 0
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Controls" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -90.0
+offset_right = 250.0
+offset_bottom = -35.0
+grow_horizontal = 2
+grow_vertical = 0
+alignment = 1
+
+[node name="BtnReset" type="Button" parent="Controls"]
+custom_minimum_size = Vector2(130, 48)
+layout_mode = 2
+text = "RESET"
+
+[node name="VSeparator1" type="Control" parent="Controls"]
+custom_minimum_size = Vector2(10, 0)
+layout_mode = 2
+
+[node name="BtnSkip" type="Button" parent="Controls"]
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+text = "SKIP TURN"
+
+[node name="VSeparator2" type="Control" parent="Controls"]
+custom_minimum_size = Vector2(10, 0)
+layout_mode = 2
+
+[node name="BtnNewPuzzle" type="Button" parent="Controls"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+text = "NEW PUZZLE"
+
+[node name="HomeIndicator" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -70.0
+offset_top = -15.0
+offset_right = 70.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 0
+color = Color(0.8, 0.85, 0.95, 0.5)
