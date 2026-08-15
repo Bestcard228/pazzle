@@ -34,7 +34,7 @@ var _press_t: float = 0.0  # Dedicated timer for press effects
 # Smooth drawing animation
 var draw_progress: float = 0.0          # How much of the current swipe has been drawn (0-1)
 var draw_progress_target: float = 0.0   # Target progress to animate towards
-var draw_speed: float = 3.0             # Speed of the drawing animation (units per second)
+var draw_speed: float = 10.0            # Segments drawn per second (~0.1s per segment)
 var last_swipe_count: int = 0           # Track swipe length to detect changes
 
 # Press animation tracking
@@ -74,23 +74,33 @@ func _process(delta: float) -> void:
 	# Update dedicated press timer for any continuous effects
 	_press_t += delta
 
-	# Update smooth drawing animation
+	# Update smooth drawing animation. Only the newest segment draws itself in; every
+	# segment already linked stays solid, so the animation never hides committed geometry.
 	var target_swipe_count := active_swipe_nodes.size()
 	if target_swipe_count != last_swipe_count:
-		# Swipe length changed, reset progress to start drawing new segment
+		var grew := target_swipe_count > last_swipe_count
 		last_swipe_count = target_swipe_count
-		if target_swipe_count > 0:
-			# Calculate progress based on how many nodes we have vs target
-			draw_progress_target = min(1.0, float(active_swipe_nodes.size()) / float(target_swipe_count)) if target_swipe_count > 0 else 0.0
-		else:
+		if target_swipe_count < 2:
+			# Nothing to draw yet (or the path was cleared)
+			draw_progress = 0.0
 			draw_progress_target = 0.0
+		elif grew:
+			# Start of the newest segment: everything before it is already complete
+			draw_progress = float(target_swipe_count - 2) / float(target_swipe_count - 1)
+			draw_progress_target = 1.0
+		else:
+			# Backtracking undoes instantly -- no catch-up lag on the line
+			draw_progress = 1.0
+			draw_progress_target = 1.0
 
-	# Animate progress towards target
+	# Animate progress towards target. draw_speed is per segment, so scale by segment count.
+	var segment_count: int = max(1, active_swipe_nodes.size() - 1)
+	var step := delta * draw_speed / float(segment_count)
 	if draw_progress < draw_progress_target:
-		draw_progress = min(draw_progress_target, draw_progress + delta * draw_speed)
+		draw_progress = min(draw_progress_target, draw_progress + step)
 		queue_redraw()
 	elif draw_progress > draw_progress_target:
-		draw_progress = max(draw_progress_target, draw_progress - delta * draw_speed)
+		draw_progress = max(draw_progress_target, draw_progress - step)
 		queue_redraw()
 
 	# Only animate when there is something to warn about (existing erasure warnings)
@@ -123,6 +133,11 @@ func set_cleared(p_cleared: bool) -> void:
 
 func set_active_swipe(nodes: Array[int]) -> void:
 	self.active_swipe_nodes = nodes.duplicate()
+	queue_redraw()
+
+# A closed shape has no loose end, so the rubber band to the finger is dropped.
+func set_loop_closed(closed: bool) -> void:
+	_is_loop_closed = closed
 	queue_redraw()
 
 # Signal handlers for enhanced input feedback
