@@ -107,6 +107,18 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_easy_plus_plus_uses_harder_shapes")
 
+	if test_medium_chain_structure():
+		passed += 1
+		print("  [PASS] test_medium_chain_structure")
+	else:
+		print("  [FAIL] test_medium_chain_structure")
+
+	if test_medium_stages_are_progressive():
+		passed += 1
+		print("  [PASS] test_medium_stages_are_progressive")
+	else:
+		print("  [FAIL] test_medium_stages_are_progressive")
+
 	return passed
 
 static func test_puzzle_generation() -> bool:
@@ -435,11 +447,22 @@ static func test_easy_plus_rotates_opening() -> bool:
 				if not _is_simple_shape(act.shape_instance, puzzle.board_definition):
 					return false
 
-		openings[EraserSystem.get_phase_for_turn(0, puzzle.board_definition)] = true
+		# The opening must be the rotation the finishing zone implies, not a fixed TOP.
+		# Checking the relation is exact; sampling the openings is not, because they are
+		# derived as (zone - (turns - 1)) mod 4 and can collide across a small batch.
+		var opening := EraserSystem.get_phase_for_turn(0, puzzle.board_definition)
+		if opening != EraserSystem.start_phase_for_final(puzzle.final_erasure_zone, puzzle.max_turns):
+			return false
+
+		openings[opening] = true
 		zones[puzzle.final_erasure_zone] = true
 
-	# The whole point of the tier: openings and finishing zones both spread
-	return openings.size() == EraserSystem.PHASE_COUNT and zones.size() == EraserSystem.PHASE_COUNT
+	# The finishing zone is bag-driven, so it must cover all four
+	if zones.size() != EraserSystem.PHASE_COUNT:
+		return false
+
+	# And unlike EASY, the opening must actually move around
+	return openings.size() > 1
 
 # EASY++ is EASY+ with the full shape vocabulary instead of the predefined simple set.
 static func test_easy_plus_plus_uses_harder_shapes() -> bool:
@@ -477,6 +500,84 @@ static func test_easy_plus_plus_uses_harder_shapes() -> bool:
 
 	# Over a batch it must actually reach beyond the simple set
 	return saw_non_simple
+
+# MEDIUM chains PATTERNs on a shared Draw. Every pattern but the last must end in Draw,
+# and the seam means each extra pattern adds two turns rather than three.
+static func test_medium_chain_structure() -> bool:
+	var chains := PuzzleGenerator.get_medium_sequences(2)
+
+	# 2 prefixes x 2 continuable openers x 3 closers
+	if chains.size() != 12:
+		return false
+
+	for chain in chains:
+		# 3 + 2(k-1) turns, plus an optional leading Skip
+		if chain.size() != 5 and chain.size() != 6:
+			return false
+
+		# Never two Skips in a row -- still the invalid branch of the tree
+		for i in range(chain.size() - 1):
+			if chain[i] == 0 and chain[i + 1] == 0:
+				return false
+
+		var boundaries := PuzzleGenerator.get_stage_boundary_turns(chain, 2)
+		if boundaries.size() != 2:
+			return false
+		# Stages sit two turns apart and the last one is the final turn
+		if boundaries[1] != chain.size() - 1: return false
+		if boundaries[1] - boundaries[0] != 2: return false
+		# The seam itself must be a Draw: it is the shared node between the patterns
+		if chain[boundaries[0]] != 1: return false
+
+	# A longer chain must grow by exactly two turns per extra pattern
+	for chain in PuzzleGenerator.get_medium_sequences(3):
+		if chain.size() != 7 and chain.size() != 8:
+			return false
+
+	return true
+
+# Each stage is a goal in its own right: reached in order, non-trivial, and different from
+# the one before it. The last stage is the puzzle's final target.
+static func test_medium_stages_are_progressive() -> bool:
+	var board_def := BoardDefinition.new(8)
+	PuzzleGenerator.reset_zone_rotation()
+
+	var legal := PuzzleGenerator.get_medium_sequences()
+
+	for i in range(6):
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.MEDIUM)
+
+		if not puzzle.is_multi_stage(): return false
+		if puzzle.get_stage_count() != 2: return false
+		if puzzle.stage_boundary_turns.size() != puzzle.stage_targets.size(): return false
+
+		var actions: Array[int] = []
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			actions.append(1 if (act != null and act.shape_instance != null) else 0)
+		if not legal.has(actions):
+			return false
+
+		var previous: VectorGeometry = null
+		for stage in range(puzzle.get_stage_count()):
+			var goal := puzzle.get_stage_target(stage)
+
+			# A stage goal must be worth aiming at, and must move on from the last one
+			if goal.segments.size() < 2: return false
+			if previous != null and goal.is_equivalent_to(previous): return false
+
+			# It must be exactly what the reference solution has on the board at that seam
+			var at_seam := PuzzleSimulator.simulate_up_to_turn(
+				puzzle.reference_solution, puzzle.board_definition, puzzle.stage_boundary_turns[stage])
+			if not goal.is_equivalent_to(at_seam): return false
+
+			previous = goal
+
+		# The final stage is the puzzle's target
+		if not puzzle.get_stage_target(puzzle.get_stage_count() - 1).is_equivalent_to(puzzle.target_geometry):
+			return false
+
+	return true
 
 static func _is_simple_shape(shape: ShapeInstance, board_def: BoardDefinition) -> bool:
 	for simple in PuzzleGenerator.generate_candidate_pool(board_def, PuzzleGenerator.Difficulty.EASY):

@@ -1,0 +1,4 @@
+res://scripts/puzzle/puzzle_generator.gd
+res://scripts/ui/game_ui.gd
+res://scripts/puzzle/puzzle_data.gd
+res://tests/probe.gd

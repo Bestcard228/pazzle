@@ -10,7 +10,7 @@ func _init():
 	print("       SHAPE TIMING PUZZLE - UNIT TESTS           ")
 	print("==================================================")
 
-	const EXPECTED_TOTAL := 23
+	const EXPECTED_TOTAL := 25
 
 	var total_passed := 0
 	total_passed += TestGeometry.run_all_tests()

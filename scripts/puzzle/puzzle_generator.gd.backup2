@@ -155,90 +155,62 @@ static func get_easy_sequences() -> Array:
 	return sequences
 
 
-# MEDIUM chains PATTERNs together. Each pattern after the first starts from the previous
-# one's final Draw -- that Draw is shared, so it is both the previous pattern's END and
-# the new pattern's opening:
-#
-#   D S D  +  D D S   ->   D S D D S      (the middle D is the seam)
-#
-# Only a PATTERN ending in Draw can be continued, so [D,D,S] is a terminal branch and can
-# only ever appear last. Every chain is enumerated -- no randomness in here, so the set is
-# stable and testable.
-#
-# A chain of k patterns is 3 + 2(k-1) turns, plus an optional leading Skip.
-const MEDIUM_CHAIN_LENGTH := 2
-
-static func get_medium_sequences(chain_length: int = MEDIUM_CHAIN_LENGTH) -> Array:
-	var continuable: Array = []
-	for pattern in EASY_PATTERNS:
-		if pattern[pattern.size() - 1] == 1:
-			continuable.append(pattern)
-
+# MEDIUM chains multiple PATTERNs together, where each pattern must end in Draw
+# to allow chaining to the next pattern. This creates a progressive sequence where
+# solving one segment reveals the next.
+static func get_medium_sequences(chains: int = 4) -> Array:
 	var sequences: Array = []
-
+	
+	# Generate chains of EASY patterns
 	for prefix in EASY_PREFIXES:
-		var base: Array[int] = []
+		var current_sequence: Array[int] = []
 		for action in prefix:
-			base.append(int(action))
-		_extend_medium_chains(base, 0, chain_length, continuable, sequences)
-
+			current_sequence.append(int(action))
+		
+		# Add the specified number of EASY patterns, ensuring each ends with Draw for chaining
+		var pattern_count := 0
+		while pattern_count < chains:
+			# Select a random EASY pattern that ends with Draw (1) for chaining continuation
+			var valid_patterns := []
+			for pattern in EASY_PATTERNS:
+				if pattern[pattern.size() - 1] == 1:  # Ends with Draw
+					valid_patterns.append(pattern)
+			
+			if valid_patterns.empty():
+				# If no valid patterns (shouldn't happen), break
+				break
+				
+			var selected_pattern := valid_patterns[randi() % valid_patterns.size()]
+			
+			# Add the pattern to our sequence
+			for action in selected_pattern:
+				current_sequence.append(int(action))
+			
+			pattern_count += 1
+		
+		sequences.append(current_sequence)
+	
 	return sequences
 
 
-# Depth-first enumeration of every legal chain of `chain_length` patterns.
-static func _extend_medium_chains(
-	sequence: Array[int],
-	depth: int,
-	chain_length: int,
-	continuable: Array,
-	out: Array
-) -> void:
-	if depth >= chain_length:
-		out.append(sequence.duplicate())
-		return
-
-	var is_last := depth == chain_length - 1
-	var choices: Array = EASY_PATTERNS if is_last else continuable
-
-	for pattern in choices:
-		var next := sequence.duplicate()
-		# The first pattern contributes all three turns; later ones skip their opening
-		# Draw, because it is the seam already placed by the pattern before it.
-		var from_index := 0 if depth == 0 else 1
-		for i in range(from_index, pattern.size()):
-			next.append(int(pattern[i]))
-		_extend_medium_chains(next, depth + 1, chain_length, continuable, out)
+static func get_sequences_for(difficulty: int, chains: int = 4) -> Array:
+	if is_two_stage(difficulty):
+		return get_medium_sequences(chains)
+	else:
+		return get_easy_sequences()
 
 
-static func get_sequences_for(difficulty: int, chain_length: int = MEDIUM_CHAIN_LENGTH) -> Array:
-	if is_multi_stage(difficulty):
-		return get_medium_sequences(chain_length)
-	return get_easy_sequences()
+# The turn the first PATTERN ends on -- the seam where the second pattern picks up. The
+# geometry alive at this turn is the "leftover" the second pattern builds from.
+static func get_stage_boundary_turn(sequence: Array) -> int:
+	return sequence.size() - EASY_PATTERN_DEPTH
 
 
-# The turn each stage of a chain ends on. Stage i finishes on the seam that stage i+1
-# opens from, and the last entry is the final turn of the puzzle.
-#
-# A chain of k patterns is 3 + 2(k-1) turns long, so the stages end two turns apart.
-static func get_stage_boundary_turns(sequence: Array, chain_length: int = MEDIUM_CHAIN_LENGTH) -> Array[int]:
-	var boundaries: Array[int] = []
-	if sequence.is_empty() or chain_length <= 0:
-		return boundaries
-
-	var last := sequence.size() - 1
-	for i in range(chain_length):
-		var boundary := last - 2 * (chain_length - 1 - i)
-		if boundary >= 0:
-			boundaries.append(boundary)
-
-	return boundaries
-
-
-static func _take_next_sequence(difficulty: int, chain_length: int = MEDIUM_CHAIN_LENGTH) -> Array[int]:
-	var bag := _medium_sequence_bag if is_multi_stage(difficulty) else _easy_sequence_bag
+static func _take_next_sequence(difficulty: int, chains: int = 4) -> Array[int]:
+	var bag := _medium_sequence_bag if is_two_stage(difficulty) else _easy_sequence_bag
 
 	if bag.is_empty():
-		bag.assign(get_sequences_for(difficulty, chain_length))
+		bag.assign(get_sequences_for(difficulty, chains))
 		bag.shuffle()
 
 	return bag.pop_front()
@@ -383,37 +355,25 @@ static func generate_puzzle(
 		if target.is_empty() or target.segments.size() < 2:
 			continue
 
-		# 2. Every drawn shape must matter. In a chained puzzle the early patterns are
-		# wiped long before the final target is read, so their shapes are judged against
-		# their own stage's seam instead -- the leftovers the next pattern builds from.
-		if is_multi_stage(difficulty):
-			var boundaries := get_stage_boundary_turns(easy_sequence)
-			if boundaries.is_empty():
+		# 2. Every drawn shape must matter. In a two-stage puzzle the first half is wiped
+		# before the final target is read, so its shapes are judged against the seam
+		# state instead -- the leftovers the second pattern builds from.
+		if is_two_stage(difficulty):
+			var boundary := get_stage_boundary_turn(easy_sequence)
+
+			if not PuzzleValidator.validate_stage_contributions(sol, puzzle_board, 0, boundary):
 				continue
 
-			var stages_ok := true
-			var previous_state: VectorGeometry = null
-			var from_turn := 0
+			if not PuzzleValidator.validate_stage_contributions(sol, puzzle_board, boundary + 1, max_turns - 1):
+				continue
 
-			for boundary in boundaries:
-				if not PuzzleValidator.validate_stage_contributions(sol, puzzle_board, from_turn, boundary):
-					stages_ok = false
-					break
+			# The seam must be a real intermediate goal, not a near-empty one
+			var seam := PuzzleSimulator.simulate_up_to_turn(sol, puzzle_board, boundary)
+			if seam.segments.size() < 2:
+				continue
 
-				# Each stage must leave a real intermediate goal, and must move on from
-				# the one before it, or that stage was busywork.
-				var stage_state := PuzzleSimulator.simulate_up_to_turn(sol, puzzle_board, boundary)
-				if stage_state.segments.size() < 2:
-					stages_ok = false
-					break
-				if previous_state != null and stage_state.is_equivalent_to(previous_state):
-					stages_ok = false
-					break
-
-				previous_state = stage_state
-				from_turn = boundary + 1
-
-			if not stages_ok:
+			# ...and it must differ from the final target, or the second half is busywork
+			if seam.is_equivalent_to(target):
 				continue
 
 		elif not PuzzleValidator.validate_necessary_contributions(
@@ -443,11 +403,11 @@ static func generate_puzzle(
 			):
 				continue
 
-		# 5. Timing has to matter. Skipped for multi-stage puzzles: that check asks whether
+		# 5. Timing has to matter. Skipped for two-stage puzzles: that check asks whether
 		# moving a shape changes the FINAL target, and a first-half shape never does --
 		# its timing is pinned by the seam instead, which stage contributions already
 		# enforce.
-		if not is_multi_stage(difficulty):
+		if not is_two_stage(difficulty):
 			if not PuzzleValidator.validate_multi_turn_timing(
 				sol,
 				target,
@@ -481,14 +441,13 @@ static func generate_puzzle(
 			final_zone
 		)
 
-		if is_multi_stage(difficulty):
-			# Each stage's target is what survives at its seam; the last one is the final
-			# target. The UI reveals them one at a time.
-			p_data.stage_boundary_turns = get_stage_boundary_turns(easy_sequence)
-			var stage_targets: Array[VectorGeometry] = []
-			for boundary in p_data.stage_boundary_turns:
-				stage_targets.append(PuzzleSimulator.simulate_up_to_turn(sol, puzzle_board, boundary))
-			p_data.stage_targets = stage_targets
+		if is_two_stage(difficulty):
+			p_data.stage_boundary_turn = get_stage_boundary_turn(easy_sequence)
+			p_data.checkpoint_geometry = PuzzleSimulator.simulate_up_to_turn(
+				sol,
+				puzzle_board,
+				p_data.stage_boundary_turn
+			)
 
 		return p_data
 

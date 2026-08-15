@@ -16,14 +16,30 @@ var final_erasure_zone: int = EraserSystem.ErasureRegion.TOP
 # is actually won. Never 0, and not always max_turns - 1.
 var completion_turn: int = -1
 
-# Two-stage (MEDIUM) puzzles only. The first PATTERN ends on `stage_boundary_turn`, and
-# `checkpoint_geometry` is what must be on the board at that moment -- the leftovers the
-# second PATTERN builds from. -1 / null for single-stage puzzles.
-var stage_boundary_turn: int = -1
-var checkpoint_geometry: VectorGeometry = null
+# Chained (MEDIUM) puzzles only. Each stage ends on a seam turn, and its target is what
+# must be on the board at that moment -- the leftovers the next pattern builds from. The
+# last entry is the final target. Empty for single-stage puzzles.
+var stage_boundary_turns: Array[int] = []
+var stage_targets: Array[VectorGeometry] = []
 
-func is_two_stage() -> bool:
-	return stage_boundary_turn >= 0 and checkpoint_geometry != null
+func is_multi_stage() -> bool:
+	return stage_targets.size() > 1
+
+func get_stage_count() -> int:
+	return maxi(1, stage_targets.size())
+
+# The goal to show while playing `stage`; falls back to the final target.
+func get_stage_target(stage: int) -> VectorGeometry:
+	if stage >= 0 and stage < stage_targets.size():
+		return stage_targets[stage]
+	return target_geometry
+
+# The stage a given turn belongs to.
+func get_stage_for_turn(turn: int) -> int:
+	for i in range(stage_boundary_turns.size()):
+		if turn <= stage_boundary_turns[i]:
+			return i
+	return maxi(0, stage_targets.size() - 1)
 
 func _init(p_board_def: BoardDefinition = null, p_target: VectorGeometry = null, p_max_turns: int = 4):
 	self.board_definition = p_board_def if p_board_def != null else BoardDefinition.new()
