@@ -8,7 +8,6 @@ signal node_released(node_id: int)
 signal hover_updated(hover_node_id: int)
 signal position_updated(position: Vector2, is_dragging: bool)
 signal preview_position_updated(position: Vector2)
-signal loop_closed_changed(closed: bool)
 
 var board_def: BoardDefinition
 var node_screen_positions: Array[Vector2] = []
@@ -21,13 +20,8 @@ var node_hitbox_radius: float = 50.0
 const DETECTION_RADIUS := 70.0   # Increased hitbox for easier initial detection
 const ACTIVATION_RADIUS := 45.0  # Confirmation radius for visual feedback
 const SNAP_RADIUS := 55.0        # Guidance radius for auto-linking
+const BACKTRACK_THRESHOLD := 0.75 # Ratio for backtrack sensitivity
 const PRESS_ANIMATION_TIME := 0.2 # Seconds for complete press animations
-
-# Backtracking hysteresis variables
-var backtrack_target_id := -1       # The node id we are backtracking toward (the node before the last in path)
-var backtrack_progress := 0.0       # How far we've moved toward the backtrack target (in pixels)
-const BACKTRACK_DISTANCE := 22.0    # Distance to travel toward previous node before backtracking occurs
-const DOT_RADIUS := 32.0            # How close the cursor needs to be to a dot to consider it a possible connection
 
 var hovered_node_id := -1          # Currently hovered node for guidance
 var press_animation_timers: Dictionary  # node_id -> animation progress (0-1)
@@ -55,41 +49,39 @@ func _input(event: InputEvent) -> void:
 				is_dragging = true
 				current_touch_pos = event.position
 				_check_node_hit(event.position)
-				# For mouse button down, we don't do backtracking update because we just pressed
 			else:
 				if is_dragging:
 					_finish_drag()
 
 	elif event is InputEventMouseMotion and is_dragging:
 		current_touch_pos = event.position
-		_update_backtracking(current_touch_pos)
+		_check_node_hit(event.position)
 		position_updated.emit(current_touch_pos, true)
 		preview_position_updated.emit(current_touch_pos)
-		_check_for_new_dot(current_touch_pos)
 
 	elif event is InputEventScreenTouch:
 		if event.pressed:
 			is_dragging = true
 			current_touch_pos = event.position
 			_check_node_hit(event.position)
-			# For touch down, we don't do backtracking update because we just pressed
+			position_updated.emit(current_touch_pos, true)
+			preview_position_updated.emit(current_touch_pos)
 		else:
 			if is_dragging:
 				_finish_drag()
 
 	elif event is InputEventScreenDrag and is_dragging:
 		current_touch_pos = event.position
-		_update_backtracking(current_touch_pos)
+		_check_node_hit(event.position)
 		position_updated.emit(current_touch_pos, true)
 		preview_position_updated.emit(current_touch_pos)
-		_check_for_new_dot(current_touch_pos)
 
 func _check_node_hit(pos: Vector2) -> void:
 	# Find the best hit node within detection radius
 	var hit_result := _find_best_hit_node(pos)
-	var best_node_id: int = hit_result[0]
-	var second_best_id: int = hit_result[1]
-	var distance: float = hit_result[2]
+	var best_node_id = hit_result[0]
+	var second_best_id = hit_result[1]
+	var distance = hit_result[2]
 
 	if best_node_id == -1:
 		# No node close enough, update hover guidance to none
@@ -103,7 +95,7 @@ func _check_node_hit(pos: Vector2) -> void:
 		hovered_node_id = best_node_id
 		hover_updated.emit(best_node_id)
 
-	# Handle path updates with normal addition (no backtracking here - handled in _update_backtracking)
+	# Handle path updates with backtracking support
 	var path_changed := _handle_path_update(best_node_id, pos)
 
 	# Manage press animation for the hit node based on path changes
@@ -116,10 +108,10 @@ func _check_node_hit(pos: Vector2) -> void:
 		press_animation_timers.erase(best_node_id)
 		node_released.emit(best_node_id)
 	# If path_changed == NO_CHANGE or COMPLETED, we don't emit press signals here
-	# Note: we don't have PATH_COMPLETED in our new _handle_path_update, but we might for loop closing?
-	# Actually, we handle loop closing separately in the input events.
+	# COMPLETED case is handled separately in _handle_path_update where node_pressed is emitted for the completion node
 
 	queue_redraw()
+
 
 func _find_best_hit_node(pos: Vector2) -> Array:
 	"""Find the best node to hit within detection radius.
@@ -150,9 +142,10 @@ func _find_best_hit_node(pos: Vector2) -> Array:
 
 	return [best_node_id, second_best_id, best_distance]
 
+
 func _handle_path_update(node_id: int, pos: Vector2) -> int:
-	"""Handle adding nodes to path (no backtracking here).
-	Returns PATH_NO_CHANGE or PATH_ADDED."""
+	"""Handle adding/removing nodes from path with backtracking support.
+	Returns PATH_NO_CHANGE, PATH_ADDED, PATH_REMOVED, or PATH_COMPLETED."""
 	if active_node_ids.is_empty():
 		# First node in path
 		active_node_ids.append(node_id)
@@ -160,118 +153,65 @@ func _handle_path_update(node_id: int, pos: Vector2) -> int:
 		last_valid_node_id = node_id
 		return PATH_ADDED
 
-	# Normal node addition: if not already in path
+	var path_size: int = active_node_ids.size()
+	var last_node: int = active_node_ids.back()
+	var first_node: int = active_node_ids.front()
+	var second_to_last_node: int = active_node_ids[path_size - 2] if path_size >= 2 else -1
+
+	# Backtracking: if moving toward the second-to-last node, remove last node
+	if is_backtracking_enabled and path_size >= 2 and node_id == second_to_last_node:
+		# Check if we're actually moving backward (toward previous node)
+		var last_pos := node_screen_positions[last_node]
+		var second_to_last_pos := node_screen_positions[second_to_last_node]
+		var current_to_last := pos.distance_to(last_pos)
+		var current_to_second_last := pos.distance_to(second_to_last_pos)
+		var last_to_second_last := last_pos.distance_to(second_to_last_pos)
+
+		# If we're closer to second-to-last than last was, consider it backtracking
+		if current_to_second_last < current_to_last * BACKTRACK_THRESHOLD:
+			active_node_ids.remove_at(path_size - 1)
+			active_path_changed.emit(active_node_ids.duplicate())
+			node_released.emit(last_node)
+			last_valid_node_id = active_node_ids.back() if not active_node_ids.is_empty() else -1
+			return PATH_REMOVED
+
+	# Normal node addition: if not already in path (or completing loop)
 	if not active_node_ids.has(node_id):
 		active_node_ids.append(node_id)
 		active_path_changed.emit(active_node_ids.duplicate())
 		last_valid_node_id = node_id
 		return PATH_ADDED
+	# Require explicit finger release to complete shape - no auto-complete on loop closure
+	# Only allow completion when finger is lifted (_finish_drag is called from touch end)
+	elif node_id == first_node and path_size >= 2:
+		# Allow looping but don't auto-complete - wait for finger release
+		# Only allow loop closure if we haven't already closed a loop in this shape
+		if not loop_closed:
+			loop_closed = true
+			active_node_ids.append(node_id)
+			active_path_changed.emit(active_node_ids.duplicate())
+			node_pressed.emit(node_id, pos)  # Press feedback for completion
+			last_valid_node_id = node_id
+			# Do NOT call _finish_drag() here - wait for touch end
+			return PATH_COMPLETED
+		# If loop already closed, treat as hovering over last node (no change)
+		elif node_id == last_node:
+			last_valid_node_id = node_id
+			return PATH_NO_CHANGE
+		else:
+			# Ignore any other attempts to add nodes after loop is closed
+			return PATH_NO_CHANGE
 
-	# If the node is already in the path, we don't add it again (unless it's the first node and we want to close the loop? But we'll handle loop closing separately)
+	# If we're hovering over the last node, no change needed
+	if node_id == last_node:
+		last_valid_node_id = node_id
+		return PATH_NO_CHANGE
+
 	return PATH_NO_CHANGE
 
-func _update_backtracking(pos: Vector2) -> void:
-	"""Update backtracking hysteresis logic."""
-	if not is_backtracking_enabled or active_node_ids.size() < 2:
-		backtrack_target_id = -1
-		backtrack_progress = 0.0
-		return
-
-	var current_id = active_node_ids.back()
-	var previous_id := active_node_ids[active_node_ids.size() - 2]
-
-	var current_pos := node_screen_positions[current_id]
-	var previous_pos := node_screen_positions[previous_id]
-
-	# Distance from cursor to the current selected dot.
-	var distance_from_current := pos.distance_to(current_pos)
-
-	# Distance from cursor to previous dot.
-	var distance_to_previous := pos.distance_to(previous_pos)
-
-	# The cursor has to clearly leave the current dot and move toward the previous dot.
-	var moving_back := distance_to_previous < distance_from_current
-
-	if not moving_back:
-		backtrack_target_id = -1
-		backtrack_progress = 0.0
-		return
-
-	# Start tracking this particular previous dot.
-	if backtrack_target_id != previous_id:
-		backtrack_target_id = previous_id
-		backtrack_progress = max(0, distance_from_current)
-
-	# How far the cursor has traveled from the current dot toward the previous dot.
-	var total_distance := current_pos.distance_to(previous_pos)
-	var traveled := total_distance - distance_to_previous
-
-	# Only commit the backtrack after the cursor has traveled sufficiently far toward the previous dot.
-	if traveled >= BACKTRACK_DISTANCE:
-		var removed_id = active_node_ids.pop_back()
-		active_path_changed.emit(active_node_ids.duplicate())
-		node_released.emit(removed_id)
-		last_valid_node_id = active_node_ids.back() if not active_node_ids.is_empty() else -1
-
-		# If we were inside a closed loop, opening it happens here.
-		if loop_closed:
-			loop_closed = false
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-			loop_closed_changed.emit(false)
-
-		backtrack_target_id = -1
-		backtrack_progress = 0.0
-
-func _check_for_new_dot(pos: Vector2) -> void:
-	"""Check for a new dot to add, if not backtracking and shape not closed."""
-	# If we are currently backtracking, don't add a new dot.
-	if backtrack_target_id != -1:
-		return
-
-	# If the shape is closed, don't add a new dot.
-	if loop_closed:
-		return
-
-	# Find the nearest dot within DOT_RADIUS.
-	var hit_result := _find_best_hit_node(pos)
-	var best_node_id: int = hit_result[0]
-	var distance: float = hit_result[2]
-
-	if best_node_id != -1 and distance <= DOT_RADIUS:
-		# Check if we are trying to add the first dot to close the loop.
-		if active_node_ids.size() >= 3 and best_node_id == active_node_ids.front():
-			# Closing the loop.
-			loop_closed = true
-			loop_closed_changed.emit(true)
-			# Do not add the first node again to the path.
-			# Emit the current path (without duplicate) so the drawing can show the closed loop preview.
-			active_path_changed.emit(active_node_ids.duplicate())
-			# Provide press feedback for the first node (which we are touching)
-			node_pressed.emit(best_node_id, pos)
-			return
-
-		# Check if we are trying to add the last dot again (should not happen, but guard).
-		if best_node_id == active_node_ids.back():
-			return
-
-		# Otherwise, add the new dot.
-		active_node_ids.append(best_node_id)
-		active_path_changed.emit(active_node_ids.duplicate())
-		last_valid_node_id = best_node_id
-		node_pressed.emit(best_node_id, pos)
 
 func _finish_drag() -> void:
 	is_dragging = false
-	backtrack_target_id = -1
-	backtrack_progress = 0.0
-	loop_closed = false
-	loop_closed_changed.emit(false)
 	if active_node_ids.size() >= 2:
 		shape_drawn.emit(active_node_ids.duplicate())
 	active_node_ids.clear()

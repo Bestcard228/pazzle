@@ -11,18 +11,41 @@ const COLOR_NODE_ACTIVE := Color(0.20, 0.95, 0.50)
 const COLOR_INK := Color(0.95, 0.75, 0.20, 0.95)
 const COLOR_CLEARED := Color(0.20, 0.95, 0.50)
 
+# Press animation constants
+const PRESS_SCALE_MIN := 1.0
+const PRESS_SCALE_MAX := 1.3
+const PRESS_PULSE_SPEED := 8.0  # Oscillations per second
+const PRESS_COLOR_SHIFT := 0.3  # Amount to shift toward white during press
+
 var board_def: BoardDefinition
 var current_surviving_geometry: VectorGeometry
 
 # The region wiped at the end of the previous turn: already gone, shown as a dead zone.
 var applied_erasure_phase: int = -1
 # The region that will be wiped at the end of THIS turn. This is the single most
-# important thing on screen, so it pulses and is hatched rather than merely tinted.
+# important hing on screen, so it pulses and is hatched rather than merely tinted.
 var upcoming_erasure_phase: int = -1
 
 var is_cleared: bool = false
 var active_swipe_nodes: Array[int] = []
 var _pulse_t: float = 0.0
+var _press_t: float = 0.0  # Dedicated timer for press effects
+
+# Smooth drawing animation
+var draw_progress: float = 0.0          # How much of the current swipe has been drawn (0-1)
+var draw_progress_target: float = 0.0   # Target progress to animate towards
+var draw_speed: float = 3.0             # Speed of the drawing animation (units per second)
+var last_swipe_count: int = 0           # Track swipe length to detect changes
+
+# Press animation tracking
+var active_presses: Dictionary  # node_id -> animation progress (0-1)
+var hover_guidance_id := -1     # For auto-linking visualization
+
+
+# Preview position for finger-following line
+var preview_position: Vector2 = Vector2.ZERO
+var is_preview_active: bool = false
+var _is_loop_closed: bool = false
 
 var node_screen_positions: Array[Vector2] = []
 var board_center_screen: Vector2 = Vector2(270, 490)
@@ -36,7 +59,41 @@ func _ready() -> void:
 	set_process(true)
 
 func _process(delta: float) -> void:
-	# Only animate when there is something to warn about
+	# Update press animations
+	var keys_to_remove := []
+	for node_id in active_presses.keys():
+		active_presses[node_id] += delta * PRESS_PULSE_SPEED
+		if active_presses[node_id] >= 1.0:
+			keys_to_remove.append(node_id)
+		else:
+			queue_redraw()  # Redraw while animating
+
+	for node_id in keys_to_remove:
+		active_presses.erase(node_id)
+
+	# Update dedicated press timer for any continuous effects
+	_press_t += delta
+
+	# Update smooth drawing animation
+	var target_swipe_count := active_swipe_nodes.size()
+	if target_swipe_count != last_swipe_count:
+		# Swipe length changed, reset progress to start drawing new segment
+		last_swipe_count = target_swipe_count
+		if target_swipe_count > 0:
+			# Calculate progress based on how many nodes we have vs target
+			draw_progress_target = min(1.0, float(active_swipe_nodes.size()) / float(target_swipe_count)) if target_swipe_count > 0 else 0.0
+		else:
+			draw_progress_target = 0.0
+
+	# Animate progress towards target
+	if draw_progress < draw_progress_target:
+		draw_progress = min(draw_progress_target, draw_progress + delta * draw_speed)
+		queue_redraw()
+	elif draw_progress > draw_progress_target:
+		draw_progress = max(draw_progress_target, draw_progress - delta * draw_speed)
+		queue_redraw()
+
+	# Only animate when there is something to warn about (existing erasure warnings)
 	if upcoming_erasure_phase < 0 and not is_cleared:
 		return
 	_pulse_t += delta
@@ -67,6 +124,35 @@ func set_cleared(p_cleared: bool) -> void:
 func set_active_swipe(nodes: Array[int]) -> void:
 	self.active_swipe_nodes = nodes.duplicate()
 	queue_redraw()
+
+# Signal handlers for enhanced input feedback
+func _on_node_pressed(node_id: int, touch_pos: Vector2) -> void:
+	# Initialize or reset animation progress for this node
+	active_presses[node_id] = 0.0
+	# Optional: Could add particle effect or sound here
+	queue_redraw()
+
+func _on_node_released(node_id: int) -> void:
+	# Remove node from active press tracking
+	active_presses.erase(node_id)
+	queue_redraw()
+
+func _on_hover_updated(node_id: int) -> void:
+	# Update hover guidance for auto-linking visualization
+	hover_guidance_id = node_id
+	queue_redraw()
+
+# Signal handlers for preview functionality
+func _on_input_position_updated(position: Vector2, is_dragging: bool) -> void:
+	is_preview_active = is_dragging
+	if not is_dragging:
+		preview_position = Vector2.ZERO
+	queue_redraw()
+
+func _on_input_preview_position_updated(position: Vector2) -> void:
+	if is_preview_active:
+		preview_position = position
+		queue_redraw()
 
 func recompute_screen_positions() -> void:
 	node_screen_positions.clear()
@@ -274,12 +360,30 @@ func _draw_node_ring() -> void:
 	for i in range(node_screen_positions.size()):
 		var pos := node_screen_positions[i]
 		var is_selected := active_swipe_nodes.has(i)
-		var node_color := COLOR_NODE_ACTIVE if is_selected else COLOR_NODE
 
-		draw_circle(pos, 18.0, node_color)
-		draw_circle(pos, 14.0, COLOR_BOARD_FILL)
+		# Base node color and size
+		var node_color := COLOR_NODE_ACTIVE if is_selected else COLOR_NODE
+		var node_size := 18.0
+
+		# Apply press animation if active
+		if active_presses.has(i):
+			var progress: float = active_presses[i]
+			var pulse := 0.5 + 0.5 * sin(progress * TAU * PRESS_PULSE_SPEED)  # Oscillating pulse
+			var scale = lerp(PRESS_SCALE_MIN, PRESS_SCALE_MAX, pulse)
+			node_size *= scale
+
+			# Color shift toward white during press
+			node_color = Color(
+				lerp(node_color.r, 1.0, pulse * PRESS_COLOR_SHIFT),
+				lerp(node_color.g, 1.0, pulse * PRESS_COLOR_SHIFT),
+				lerp(node_color.b, 0.8, pulse * PRESS_COLOR_SHIFT),
+				node_color.a
+			)
+
+		draw_circle(pos, node_size, node_color)
+		draw_circle(pos, node_size * 0.78, COLOR_BOARD_FILL)  # Inner circle size scales with outer
 		if is_selected:
-			draw_circle(pos, 8.0, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.8))
+			draw_circle(pos, node_size * 0.44, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.8))
 
 func _draw_surviving_geometry() -> void:
 	if current_surviving_geometry == null or current_surviving_geometry.is_empty():
@@ -292,13 +396,50 @@ func _draw_surviving_geometry() -> void:
 		draw_line(s1, s2, COLOR_INK, 4.0)
 
 func _draw_active_swipe() -> void:
+	# Draw preview line and guidance line - these can work with just one node
+	if is_preview_active and not _is_loop_closed and active_swipe_nodes.size() > 0 and preview_position != Vector2.ZERO:
+		var last_confirmed_pos := node_screen_positions[active_swipe_nodes.back()]
+		draw_line(last_confirmed_pos, preview_position, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.6), 3.0)
+
+	if hover_guidance_id >= 0 and active_swipe_nodes.size() > 0:
+		var last_active_pos := node_screen_positions[active_swipe_nodes.back()]
+		var hover_pos := node_screen_positions[hover_guidance_id]
+
+		# Draw dashed line for guidance
+		var dash_length := 5.0
+		var gap_length := 3.0
+		var total_length := dash_length + gap_length
+		var distance := last_active_pos.distance_to(hover_pos)
+		var dash_count := int(distance / total_length)
+
+		var direction := (hover_pos - last_active_pos).normalized()
+		for i in range(dash_count):
+			var start := last_active_pos + direction * (i * total_length)
+			var end := start + direction * dash_length
+			draw_line(start, end, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.4), 2.0)
+
+	# Draw the main active swipe - need at least 2 nodes for this
 	if active_swipe_nodes.size() < 2:
 		return
 
-	for i in range(active_swipe_nodes.size() - 1):
+	# Calculate how much of the swipe to draw based on progress
+	var total_segments := active_swipe_nodes.size() - 1
+	var segments_to_draw_float := draw_progress * float(total_segments)
+	var full_segments_to_draw := int(segments_to_draw_float)
+	var partial_segment_progress := segments_to_draw_float - float(full_segments_to_draw)
+
+	# Draw the main active swipe
+	for i in range(full_segments_to_draw):
 		var p1 := node_screen_positions[active_swipe_nodes[i]]
 		var p2 := node_screen_positions[active_swipe_nodes[i + 1]]
 		draw_line(p1, p2, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.9), 4.0)
+
+	# Draw partial segment if there's progress in the current segment
+	if full_segments_to_draw < total_segments and partial_segment_progress > 0.0:
+		var p1 := node_screen_positions[active_swipe_nodes[full_segments_to_draw]]
+		var p2 := node_screen_positions[active_swipe_nodes[full_segments_to_draw + 1]]
+		var interim_pos = p1.lerp(p2, partial_segment_progress)
+		draw_line(p1, interim_pos, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.9), 4.0)
 
 func _draw_cleared_glow() -> void:
 	if not is_cleared:

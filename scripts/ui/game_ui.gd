@@ -47,7 +47,30 @@ func _ready() -> void:
 	input_handler.shape_drawn.connect(_on_shape_drawn)
 	input_handler.active_path_changed.connect(_on_active_path_changed)
 
+	# Enhanced input feedback connections
+	input_handler.node_pressed.connect(_on_input_node_pressed)
+	input_handler.node_released.connect(_on_input_node_released)
+	input_handler.hover_updated.connect(_on_input_hover_updated)
+	input_handler.position_updated.connect(_on_input_position_updated)
+	input_handler.preview_position_updated.connect(_on_input_preview_position_updated)
+	input_handler.loop_closed_changed.connect(_on_loop_closed_changed)
+
 	load_new_puzzle()
+
+func _on_input_node_pressed(node_id: int, touch_pos: Vector2) -> void:
+	drawing_board._on_node_pressed(node_id, touch_pos)
+
+func _on_input_node_released(node_id: int) -> void:
+	drawing_board._on_node_released(node_id)
+
+func _on_input_hover_updated(node_id: int) -> void:
+	drawing_board._on_hover_updated(node_id)
+
+func _on_input_position_updated(position: Vector2, is_dragging: bool) -> void:
+	drawing_board._on_input_position_updated(position, is_dragging)
+
+func _on_input_preview_position_updated(position: Vector2) -> void:
+	drawing_board._on_input_preview_position_updated(position)
 
 func _on_turns_cycled() -> void:
 	var next := (TURN_CHOICES.find(selected_turn_limit) + 1) % TURN_CHOICES.size()
@@ -189,9 +212,12 @@ func _check_victory() -> void:
 
 	# A middle stage clears into the next one instead of ending the puzzle
 	if current_stage < current_puzzle.get_stage_count() - 1:
-		# Make the completed stage turn green and fade out in the checkpoint display
-		checkpoint_display.set_matched(true)
-		checkpoint_display.start_fade_out()
+		# Make the completed stage turn green and fade out in the target display
+		target_display.set_matched(true)
+		target_display.start_fade_out()
+
+		# Update the stage label immediately to show we've completed this stage
+		_refresh_stage_label()
 
 		# Advance to next stage after a short delay to let fade-out start
 		call_deferred("_advance_stage")
@@ -258,3 +284,6 @@ func _update_ui() -> void:
 		label_status.text = ""
 		label_status.modulate = Color.WHITE
 		_refresh_stage_label()
+
+func _on_loop_closed_changed(closed: bool) -> void:
+	drawing_board.set_loop_closed(closed)

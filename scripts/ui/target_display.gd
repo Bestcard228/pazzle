@@ -42,10 +42,9 @@ func set_matched(p_matched: bool) -> void:
 	queue_redraw()
 
 func start_fade_out() -> void:
-	# Only trigger fade-out if currently showing a target (not matched yet)
-	if not is_matched:
-		is_fading_out = true
-		fade_timer = 0.0
+	# Trigger fade-out to animate transition (can be used for matched or unmatched states)
+	is_fading_out = true
+	fade_timer = 0.0
 
 func _draw() -> void:
 	_draw_card_background(Rect2(Vector2.ZERO, size))

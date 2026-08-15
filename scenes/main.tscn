@@ -1,13 +1,12 @@
-[gd_scene load_steps=7 format=3 uid="uid://c8s7t1m9p4q0x"]
+[gd_scene load_steps=9 format=3 uid="uid://c8s7t1nap4q0x"]
 
-
-[ext_resource type="Script" path="res://scripts/ui/game_ui.gd" id="1_ui"]
-[ext_resource type="Script" path="res://scripts/ui/drawing_board.gd" id="2_board"]
-[ext_resource type="Script" path="res://scripts/ui/input_handler.gd" id="3_input"]
-[ext_resource type="Script" path="res://scripts/ui/target_display.gd" id="4_target"]
-[ext_resource type="Script" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
-[ext_resource type="Script" path="res://scripts/ui/icon_button.gd" id="6_icon"]
-[ext_resource type="Script" path="res://scripts/ui/solution_strip.gd" id="7_solution"]
+[ext_resource type="Script" uid="uid://bpnnghsf23ftn" path="res://scripts/ui/game_ui.gd" id="1_ui"]
+[ext_resource type="Script" uid="uid://blpuivf4cdnwi" path="res://scripts/ui/drawing_board.gd" id="2_board"]
+[ext_resource type="Script" uid="uid://cup2s7jbtkiiv" path="res://scripts/ui/input_handler.gd" id="3_input"]
+[ext_resource type="Script" uid="uid://be3luifrfhys0" path="res://scripts/ui/target_display.gd" id="4_target"]
+[ext_resource type="Script" uid="uid://berst8qji627i" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
+[ext_resource type="Script" uid="uid://goans2hpome0" path="res://scripts/ui/icon_button.gd" id="6_icon"]
+[ext_resource type="Script" uid="uid://bj0lxs0j8hyw5" path="res://scripts/ui/solution_strip.gd" id="7_solution"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font_size = 22
@@ -69,7 +68,6 @@ offset_right = 79.0
 offset_bottom = 120.0
 tooltip_text = "Difficulty"
 script = ExtResource("6_icon")
-icon_kind = 0
 
 [node name="BtnTurns" type="Button" parent="HUD"]
 layout_mode = 1
@@ -140,6 +138,15 @@ offset_bottom = 195.0
 grow_horizontal = 0
 script = ExtResource("4_target")
 
+[node name="TargetTitle" type="Label" parent="HUD/TargetDisplay"]
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 120.0
+offset_bottom = 22.0
+text = "GOAL"
+horizontal_alignment = 1
+
 [node name="CheckpointDisplay" type="Control" parent="HUD"]
 visible = false
 layout_mode = 1
@@ -162,15 +169,6 @@ offset_bottom = 22.0
 text = "STEP 1"
 horizontal_alignment = 1
 
-[node name="TargetTitle" type="Label" parent="HUD/TargetDisplay"]
-layout_mode = 1
-offset_left = 5.0
-offset_top = 4.0
-offset_right = 120.0
-offset_bottom = 22.0
-text = "GOAL"
-horizontal_alignment = 1
-
 [node name="StatusLabel" type="Label" parent="HUD"]
 layout_mode = 1
 anchors_preset = 7
@@ -184,7 +182,6 @@ offset_right = 250.0
 offset_bottom = -150.0
 grow_horizontal = 2
 grow_vertical = 0
-text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 
