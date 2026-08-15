@@ -23,13 +23,14 @@ enum Difficulty {
 	MEDIUM = 4,
 }
 
-# Ascending order of hardness, for cycling through in the UI.
+# Ascending order of hardness, for cycling through in the UI. NORMAL is deliberately not
+# on this ladder: it is the untiered free-generation fallback the generator still defaults
+# to internally, but it is not something the player picks.
 const DIFFICULTY_ORDER := [
 	Difficulty.EASY,
 	Difficulty.EASY_PLUS,
 	Difficulty.EASY_PLUS_PLUS,
 	Difficulty.MEDIUM,
-	Difficulty.NORMAL,
 ]
 
 # Every tier driven by the PATTERN tree rather than free turn selection.

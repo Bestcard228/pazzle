@@ -9,10 +9,12 @@ extends Button
 # still come from the normal Button styling.
 
 enum IconKind {
-	DIFFICULTY,   # state: 1-based rank on the difficulty ladder
+	DIFFICULTY,   # state: 1-based rank on the difficulty ladder, 0 = Auto (shuffles tiers)
 	TURN_COUNT,   # state: 0 = random, otherwise the fixed turn count
 	ERASER_SHAPE, # state: EraserSystem.ErasureShape value
 	REVEAL,       # state: 0 = solution hidden, 1 = solution shown
+	HINT,         # state: 0 = dormant, 1 = offered
+	PIXEL,        # state: 0 = filter off, 1 = filter on
 }
 
 const COLOR_ON := Color(0.55, 0.80, 1.00)
@@ -34,11 +36,21 @@ func _draw() -> void:
 		IconKind.TURN_COUNT: _draw_turn_count(box)
 		IconKind.ERASER_SHAPE: _draw_eraser_shape(box)
 		IconKind.REVEAL: _draw_reveal(box)
+		IconKind.HINT: _draw_hint(box)
+		IconKind.PIXEL: _draw_pixel(box)
 
-# Rising bars, one per rung of the ladder: Easy, Easy+, Easy++, Normal.
+# Rising bars, one per rung of the ladder: Easy, Easy+, Easy++, Medium. State 0 is Auto,
+# where the ladder is drawn empty with the shuffle arrow over it.
 func _draw_difficulty(box: Rect2) -> void:
 	var bars := 4
-	var lit: int = clampi(icon_state, 1, bars)
+	if icon_state <= 0:
+		_draw_difficulty_bars(box, 0)
+		_draw_cycle_arrow(box.position + box.size * 0.5, minf(box.size.x, box.size.y) * 0.26)
+		return
+	_draw_difficulty_bars(box, clampi(icon_state, 1, bars))
+
+func _draw_difficulty_bars(box: Rect2, lit: int) -> void:
+	var bars := 4
 	var bar_w := 5.0
 	var gap := 4.0
 	var total := bar_w * bars + gap * (bars - 1)
@@ -134,6 +146,59 @@ func _draw_reveal(box: Rect2) -> void:
 		draw_circle(center, h * 0.62, color)
 	else:
 		draw_line(center + Vector2(-w, h), center + Vector2(w, -h), color, 2.5)
+
+# A lamp: dark while the player is still working it out, lit once a hint is on offer.
+func _draw_hint(box: Rect2) -> void:
+	var center := box.position + box.size * 0.5
+	var offered := icon_state == 1
+	var color := Color(1.00, 0.85, 0.35) if offered else COLOR_OFF
+	var r := minf(box.size.x, box.size.y) * 0.20
+
+	var bulb := center - Vector2(0, r * 0.35)
+	draw_arc(bulb, r, 0, TAU, 24, color, 2.0)
+	if offered:
+		draw_circle(bulb, r * 0.55, Color(color.r, color.g, color.b, 0.45))
+
+	# Screw base
+	var base_w := r * 0.8
+	var base_y := bulb.y + r * 0.9
+	for i in range(2):
+		var y := base_y + i * 4.0
+		draw_line(Vector2(center.x - base_w, y), Vector2(center.x + base_w, y), color, 2.0)
+
+	# Rays only when the lamp is lit
+	if not offered:
+		return
+	for i in range(6):
+		var a := -PI + (float(i) + 0.5) * (PI / 6.0)
+		var dir := Vector2(cos(a), sin(a))
+		draw_line(bulb + dir * (r * 1.35), bulb + dir * (r * 1.85), color, 2.0)
+
+# A circle rendered two ways across the diagonal: smooth on one side, stepped into blocks
+# on the other -- the icon shows the filter's own effect.
+func _draw_pixel(box: Rect2) -> void:
+	var center := box.position + box.size * 0.5
+	var r := minf(box.size.x, box.size.y) * 0.30
+	var on := icon_state == 1
+	var color := COLOR_ON if on else COLOR_OFF
+
+	var cell := r * 0.5
+	var steps := 3
+	for gx in range(-steps, steps):
+		for gy in range(-steps, steps):
+			var cell_pos := center + Vector2(gx, gy) * cell
+			var cell_center := cell_pos + Vector2(cell, cell) * 0.5
+			if cell_center.distance_to(center) > r:
+				continue
+			# Below the diagonal stays smooth, above it breaks into blocks
+			var stepped := (gx + gy) < 0 or on
+			if stepped:
+				draw_rect(Rect2(cell_pos + Vector2.ONE * 0.5, Vector2(cell - 1.0, cell - 1.0)), color)
+			else:
+				draw_circle(cell_center, cell * 0.34, color)
+
+	if not on:
+		draw_arc(center, r * 1.25, 0, TAU, 28, COLOR_OFF, 1.5)
 
 func _draw_sector(center: Vector2, radius: float, start_angle: float, span: float, color: Color) -> void:
 	var steps := 16

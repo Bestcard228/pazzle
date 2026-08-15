@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://c8s7t1nap4q0x"]
+[gd_scene load_steps=11 format=3 uid="uid://c8s7t1nap4q0x"]
 
 [ext_resource type="Script" uid="uid://bpnnghsf23ftn" path="res://scripts/ui/game_ui.gd" id="1_ui"]
 [ext_resource type="Script" uid="uid://blpuivf4cdnwi" path="res://scripts/ui/drawing_board.gd" id="2_board"]
@@ -7,10 +7,23 @@
 [ext_resource type="Script" uid="uid://berst8qji627i" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
 [ext_resource type="Script" uid="uid://goans2hpome0" path="res://scripts/ui/icon_button.gd" id="6_icon"]
 [ext_resource type="Script" uid="uid://bj0lxs0j8hyw5" path="res://scripts/ui/solution_strip.gd" id="7_solution"]
+[ext_resource type="Shader" path="res://shaders/pixel_filter.gdshader" id="8_pixel"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
-font_size = 22
+font_size = 26
 font_color = Color(0.9, 0.95, 1, 1)
+
+; Glyphs have to be tall enough to survive the resolve: below roughly ten art pixels a
+; letter has no strokes left to read.
+[sub_resource type="Theme" id="Theme_ui"]
+default_font_size = 20
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pixel"]
+shader = ExtResource("8_pixel")
+shader_parameter/pixel_size = 2.0
+shader_parameter/design_resolution = Vector2(540, 960)
+shader_parameter/color_levels = 32
+shader_parameter/sharpness = 0.35
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -19,6 +32,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = SubResource("Theme_ui")
 script = ExtResource("1_ui")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -51,9 +65,9 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -180.0
-offset_top = 34.0
+offset_top = 32.0
 offset_right = 180.0
-offset_bottom = 66.0
+offset_bottom = 70.0
 grow_horizontal = 2
 text = "SHAPE TIMING PUZZLE"
 label_settings = SubResource("LabelSettings_title")
@@ -99,6 +113,27 @@ tooltip_text = "Show the intended solution"
 script = ExtResource("6_icon")
 icon_kind = 3
 
+[node name="BtnHint" type="Button" parent="HUD"]
+visible = false
+layout_mode = 1
+offset_left = 15.0
+offset_top = 130.0
+offset_right = 79.0
+offset_bottom = 178.0
+tooltip_text = "Show a hint for this turn"
+script = ExtResource("6_icon")
+icon_kind = 4
+
+[node name="BtnPixel" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 311.0
+offset_top = 72.0
+offset_right = 375.0
+offset_bottom = 120.0
+tooltip_text = "Pixel-art filter"
+script = ExtResource("6_icon")
+icon_kind = 5
+
 [node name="SolutionStrip" type="Control" parent="HUD"]
 layout_mode = 1
 anchors_preset = 7
@@ -141,9 +176,9 @@ script = ExtResource("4_target")
 [node name="TargetTitle" type="Label" parent="HUD/TargetDisplay"]
 layout_mode = 1
 offset_left = 5.0
-offset_top = 4.0
+offset_top = 3.0
 offset_right = 120.0
-offset_bottom = 22.0
+offset_bottom = 29.0
 text = "GOAL"
 horizontal_alignment = 1
 
@@ -163,9 +198,9 @@ script = ExtResource("4_target")
 [node name="CheckpointTitle" type="Label" parent="HUD/CheckpointDisplay"]
 layout_mode = 1
 offset_left = 5.0
-offset_top = 4.0
+offset_top = 3.0
 offset_right = 120.0
-offset_bottom = 22.0
+offset_bottom = 29.0
 text = "STEP 1"
 horizontal_alignment = 1
 
@@ -177,9 +212,9 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -250.0
-offset_top = -180.0
+offset_top = -184.0
 offset_right = 250.0
-offset_bottom = -150.0
+offset_bottom = -148.0
 grow_horizontal = 2
 grow_vertical = 0
 horizontal_alignment = 1
@@ -222,6 +257,18 @@ layout_mode = 2
 custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 text = "NEW PUZZLE"
+
+[node name="PixelFilter" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Screen" type="ColorRect" parent="PixelFilter"]
+material = SubResource("ShaderMaterial_pixel")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="HomeIndicator" type="ColorRect" parent="."]
 layout_mode = 1

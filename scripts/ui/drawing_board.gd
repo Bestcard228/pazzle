@@ -47,6 +47,18 @@ var preview_position: Vector2 = Vector2.ZERO
 var is_preview_active: bool = false
 var _is_loop_closed: bool = false
 
+# Reward flash for a shape that has just been committed
+const COMMIT_FLASH_TIME := 0.45
+var _commit_flash_nodes: Array[int] = []
+var _commit_flash_t: float = COMMIT_FLASH_TIME
+
+# Hint ghost
+const COLOR_HINT := Color(1.00, 0.85, 0.35)
+const HINT_SHOW_TIME := 4.5
+const HINT_DRAW_TIME := 0.8
+var _hint_nodes: Array[int] = []
+var _hint_t: float = HINT_SHOW_TIME
+
 var node_screen_positions: Array[Vector2] = []
 var board_center_screen: Vector2 = Vector2(270, 490)
 var board_radius_screen: float = 170.0
@@ -73,6 +85,14 @@ func _process(delta: float) -> void:
 
 	# Update dedicated press timer for any continuous effects
 	_press_t += delta
+
+	# Commit flash and hint ghost both run themselves out and stop asking for redraws
+	if _commit_flash_t < COMMIT_FLASH_TIME:
+		_commit_flash_t += delta
+		queue_redraw()
+	if _hint_t < HINT_SHOW_TIME:
+		_hint_t += delta
+		queue_redraw()
 
 	# Update smooth drawing animation. Only the newest segment draws itself in; every
 	# segment already linked stays solid, so the animation never hides committed geometry.
@@ -139,6 +159,24 @@ func set_active_swipe(nodes: Array[int]) -> void:
 func set_loop_closed(closed: bool) -> void:
 	_is_loop_closed = closed
 	queue_redraw()
+
+func flash_committed_shape(nodes: Array[int]) -> void:
+	_commit_flash_nodes = nodes.duplicate()
+	_commit_flash_t = 0.0
+	queue_redraw()
+
+func show_hint_path(nodes: Array[int]) -> void:
+	_hint_nodes = nodes.duplicate()
+	_hint_t = 0.0
+	queue_redraw()
+
+func clear_hint() -> void:
+	_hint_nodes.clear()
+	_hint_t = HINT_SHOW_TIME
+	queue_redraw()
+
+func is_hint_showing() -> bool:
+	return _hint_nodes.size() >= 2 and _hint_t < HINT_SHOW_TIME
 
 # Signal handlers for enhanced input feedback
 func _on_node_pressed(node_id: int, touch_pos: Vector2) -> void:
@@ -261,8 +299,73 @@ func _draw() -> void:
 	_draw_upcoming_erasure()
 	_draw_node_ring()
 	_draw_surviving_geometry()
+	_draw_hint_path()
 	_draw_active_swipe()
+	_draw_commit_flash()
 	_draw_cleared_glow()
+
+# The shape the player just committed, echoed as an expanding bright ghost. The turn is
+# resolved instantly, so without this the swipe simply vanishes and nothing acknowledges it.
+func _draw_commit_flash() -> void:
+	if _commit_flash_nodes.size() < 2 or _commit_flash_t >= COMMIT_FLASH_TIME:
+		return
+
+	var t := _commit_flash_t / COMMIT_FLASH_TIME
+	var alpha := (1.0 - t) * 0.9
+	var width := lerpf(7.0, 2.0, t)
+
+	for i in range(_commit_flash_nodes.size() - 1):
+		var a: int = _commit_flash_nodes[i]
+		var b: int = _commit_flash_nodes[i + 1]
+		if a < 0 or b < 0 or a >= node_screen_positions.size() or b >= node_screen_positions.size():
+			continue
+		draw_line(node_screen_positions[a], node_screen_positions[b],
+			Color(1.0, 1.0, 1.0, alpha), width)
+
+	# A ring blooming off each node the shape used
+	for n in _commit_flash_nodes:
+		var idx: int = n
+		if idx < 0 or idx >= node_screen_positions.size():
+			continue
+		draw_arc(node_screen_positions[idx], lerpf(16.0, 44.0, t), 0, TAU, 24,
+			Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, alpha * 0.7), 2.0)
+
+# The hint: the path the intended solution wants this turn, drawn in as a dashed ghost
+# that keeps breathing until it times out or the player acts.
+func _draw_hint_path() -> void:
+	if _hint_nodes.size() < 2 or _hint_t >= HINT_SHOW_TIME:
+		return
+
+	# Draws itself in over the first stretch, then holds and fades at the end
+	var draw_in := clampf(_hint_t / HINT_DRAW_TIME, 0.0, 1.0)
+	var tail := clampf((HINT_SHOW_TIME - _hint_t) / 0.6, 0.0, 1.0)
+	var breathe := 0.65 + 0.35 * sin(_hint_t * 4.0)
+	var alpha := 0.85 * tail * breathe
+
+	var total_segments := _hint_nodes.size() - 1
+	var drawn := draw_in * float(total_segments)
+
+	for i in range(total_segments):
+		var a: int = _hint_nodes[i]
+		var b: int = _hint_nodes[i + 1]
+		if a < 0 or b < 0 or a >= node_screen_positions.size() or b >= node_screen_positions.size():
+			continue
+		var p1 := node_screen_positions[a]
+		var p2 := node_screen_positions[b]
+		var seg_progress := clampf(drawn - float(i), 0.0, 1.0)
+		if seg_progress <= 0.0:
+			break
+		draw_line(p1, p1.lerp(p2, seg_progress), Color(COLOR_HINT.r, COLOR_HINT.g, COLOR_HINT.b, alpha), 5.0)
+
+	# Halo the nodes so the player can see which dots to touch, in order
+	for i in range(_hint_nodes.size()):
+		var idx: int = _hint_nodes[i]
+		if idx < 0 or idx >= node_screen_positions.size():
+			continue
+		if float(i) > drawn:
+			break
+		draw_arc(node_screen_positions[idx], 24.0, 0, TAU, 24,
+			Color(COLOR_HINT.r, COLOR_HINT.g, COLOR_HINT.b, alpha * 0.8), 2.5)
 
 func _draw_board_face() -> void:
 	draw_circle(board_center_screen, board_radius_screen * 1.12, COLOR_BOARD_FILL)
