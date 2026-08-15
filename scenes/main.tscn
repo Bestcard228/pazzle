@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/ui/target_display.gd" id="4_target"]
 [ext_resource type="Script" path="res://scripts/ui/turn_timeline.gd" id="5_timeline"]
 [ext_resource type="Script" path="res://scripts/ui/icon_button.gd" id="6_icon"]
+[ext_resource type="Script" path="res://scripts/ui/solution_strip.gd" id="7_solution"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font_size = 22
@@ -90,6 +91,31 @@ tooltip_text = "Eraser shape"
 script = ExtResource("6_icon")
 icon_kind = 2
 
+[node name="BtnReveal" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 237.0
+offset_top = 72.0
+offset_right = 301.0
+offset_bottom = 120.0
+tooltip_text = "Show the intended solution"
+script = ExtResource("6_icon")
+icon_kind = 3
+
+[node name="SolutionStrip" type="Control" parent="HUD"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -255.0
+offset_top = -262.0
+offset_right = 255.0
+offset_bottom = -184.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("7_solution")
+
 [node name="TurnTimeline" type="Control" parent="HUD"]
 layout_mode = 1
 anchors_preset = 5
@@ -113,6 +139,28 @@ offset_right = -15.0
 offset_bottom = 195.0
 grow_horizontal = 0
 script = ExtResource("4_target")
+
+[node name="CheckpointDisplay" type="Control" parent="HUD"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 200.0
+offset_right = -15.0
+offset_bottom = 325.0
+grow_horizontal = 0
+script = ExtResource("4_target")
+
+[node name="CheckpointTitle" type="Label" parent="HUD/CheckpointDisplay"]
+layout_mode = 1
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 120.0
+offset_bottom = 22.0
+text = "STEP 1"
+horizontal_alignment = 1
 
 [node name="TargetTitle" type="Label" parent="HUD/TargetDisplay"]
 layout_mode = 1

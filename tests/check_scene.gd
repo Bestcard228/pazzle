@@ -49,6 +49,16 @@ func _process(_delta: float) -> bool:
 			problems.append("eraser icon out of sync with erasure_shape")
 		if ui.btn_turns != null and ui.btn_turns.icon_state != ui.selected_turn_limit:
 			problems.append("turns icon out of sync with selected_turn_limit")
+		if ui.solution_strip == null: problems.append("solution_strip not resolved")
+		if ui.btn_reveal == null: problems.append("btn_reveal not resolved")
+		# The solution aid is Easy-only and must start concealed
+		if ui.solution_revealed: problems.append("solution revealed before the player asked")
+		if ui.solution_strip != null and ui.solution_strip.is_revealed:
+			problems.append("solution strip drawing while concealed")
+		if ui.btn_reveal != null and ui.btn_reveal.visible != ui.is_easy_mode():
+			problems.append("reveal button visibility does not track easy mode")
+		if ui.solution_strip != null and ui.solution_strip.solution == null:
+			problems.append("solution strip has no reference solution")
 		if ui.current_puzzle == null: problems.append("no puzzle generated on ready")
 		else:
 			if ui.turn_timeline.max_turns != ui.current_puzzle.max_turns:

@@ -16,6 +16,15 @@ var final_erasure_zone: int = EraserSystem.ErasureRegion.TOP
 # is actually won. Never 0, and not always max_turns - 1.
 var completion_turn: int = -1
 
+# Two-stage (MEDIUM) puzzles only. The first PATTERN ends on `stage_boundary_turn`, and
+# `checkpoint_geometry` is what must be on the board at that moment -- the leftovers the
+# second PATTERN builds from. -1 / null for single-stage puzzles.
+var stage_boundary_turn: int = -1
+var checkpoint_geometry: VectorGeometry = null
+
+func is_two_stage() -> bool:
+	return stage_boundary_turn >= 0 and checkpoint_geometry != null
+
 func _init(p_board_def: BoardDefinition = null, p_target: VectorGeometry = null, p_max_turns: int = 4):
 	self.board_definition = p_board_def if p_board_def != null else BoardDefinition.new()
 	self.target_geometry = p_target if p_target != null else VectorGeometry.new()

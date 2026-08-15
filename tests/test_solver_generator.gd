@@ -59,11 +59,11 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_star_excluded_from_puzzles")
 
-	if test_easy_starts_at_top_and_varies_zone():
+	if test_easy_board_is_fixed():
 		passed += 1
-		print("  [PASS] test_easy_starts_at_top_and_varies_zone")
+		print("  [PASS] test_easy_board_is_fixed")
 	else:
-		print("  [FAIL] test_easy_starts_at_top_and_varies_zone")
+		print("  [FAIL] test_easy_board_is_fixed")
 
 	if test_never_completed_on_first_turn():
 		passed += 1
@@ -83,11 +83,35 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_both_eraser_shapes_generate")
 
+	if test_easy_sequence_set_is_exactly_six():
+		passed += 1
+		print("  [PASS] test_easy_sequence_set_is_exactly_six")
+	else:
+		print("  [FAIL] test_easy_sequence_set_is_exactly_six")
+
+	if test_easy_covers_all_six_sequences():
+		passed += 1
+		print("  [PASS] test_easy_covers_all_six_sequences")
+	else:
+		print("  [FAIL] test_easy_covers_all_six_sequences")
+
+	if test_easy_plus_rotates_opening():
+		passed += 1
+		print("  [PASS] test_easy_plus_rotates_opening")
+	else:
+		print("  [FAIL] test_easy_plus_rotates_opening")
+
+	if test_easy_plus_plus_uses_harder_shapes():
+		passed += 1
+		print("  [PASS] test_easy_plus_plus_uses_harder_shapes")
+	else:
+		print("  [FAIL] test_easy_plus_plus_uses_harder_shapes")
+
 	return passed
 
 static func test_puzzle_generation() -> bool:
 	var board_def := BoardDefinition.new(8)
-	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, false) # 0 means default 4-7 turns
+	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.NORMAL) # 0 means default 4-7 turns
 	if puzzle == null or puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
 		return false
 	if puzzle.max_turns < 4 or puzzle.max_turns > 7:
@@ -99,7 +123,7 @@ static func test_puzzle_generation() -> bool:
 
 static func test_necessity_validation() -> bool:
 	var board_def := BoardDefinition.new(8)
-	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 4, 2, false)
+	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 4, 2, PuzzleGenerator.Difficulty.NORMAL)
 	if puzzle == null or puzzle.reference_solution == null:
 		return false
 
@@ -107,14 +131,14 @@ static func test_necessity_validation() -> bool:
 
 static func test_easy_mode_generation() -> bool:
 	var board_def := BoardDefinition.new(8)
-	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 3, 2, true)
+	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 3, 2, PuzzleGenerator.Difficulty.EASY)
 	if puzzle == null or puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
 		return false
 	return true
 
 static func test_hard_mode_7_turns() -> bool:
 	var board_def := BoardDefinition.new(8)
-	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 7, 3, false)
+	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 7, 3, PuzzleGenerator.Difficulty.NORMAL)
 	if puzzle == null or puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
 		return false
 
@@ -123,7 +147,7 @@ static func test_hard_mode_7_turns() -> bool:
 
 static func test_not_last_turn_only() -> bool:
 	var board_def := BoardDefinition.new(8)
-	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 5, 2, false)
+	var puzzle := PuzzleGenerator.generate_puzzle(board_def, 5, 2, PuzzleGenerator.Difficulty.NORMAL)
 	if puzzle == null or puzzle.reference_solution == null:
 		return false
 
@@ -135,7 +159,7 @@ static func test_default_turn_range() -> bool:
 	var seen := {}
 
 	for i in range(12):
-		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, false)
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.NORMAL)
 		if puzzle.max_turns < PuzzleGenerator.DEFAULT_MIN_TURNS or puzzle.max_turns > PuzzleGenerator.DEFAULT_MAX_TURNS:
 			return false
 		seen[puzzle.max_turns] = true
@@ -151,7 +175,7 @@ static func test_final_zone_variety() -> bool:
 	var prev := -1
 
 	for i in range(8):
-		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, false)
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.NORMAL)
 		var zone := puzzle.final_erasure_zone
 
 		# The stored zone must be what the simulation actually erases last
@@ -173,7 +197,7 @@ static func test_fixed_turn_count_still_varies_zone() -> bool:
 
 	var zones := {}
 	for i in range(4):
-		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 5, 2, false)
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 5, 2, PuzzleGenerator.Difficulty.NORMAL)
 		if puzzle.max_turns != 5:
 			return false
 		zones[puzzle.final_erasure_zone] = true
@@ -189,8 +213,8 @@ static func test_star_excluded_from_puzzles() -> bool:
 	if star == null:
 		return false
 
-	for is_easy in [false, true]:
-		for candidate in PuzzleGenerator.generate_candidate_pool(board_def, is_easy):
+	for tier in PuzzleGenerator.DIFFICULTY_ORDER:
+		for candidate in PuzzleGenerator.generate_candidate_pool(board_def, tier):
 			if candidate.geometry.is_equivalent_to(star.geometry):
 				return false
 
@@ -199,9 +223,9 @@ static func test_star_excluded_from_puzzles() -> bool:
 			return false
 
 	# And no generated solution should contain it
-	for is_easy in [false, true]:
-		for i in range(4):
-			var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, is_easy)
+	for tier in PuzzleGenerator.DIFFICULTY_ORDER:
+		for i in range(2):
+			var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, tier)
 			for t in range(puzzle.max_turns):
 				var act := puzzle.reference_solution.get_action(t)
 				if act != null and act.shape_instance != null:
@@ -210,39 +234,52 @@ static func test_star_excluded_from_puzzles() -> bool:
 
 	return true
 
-# Easy mode always begins erasing at TOP, yet must still spread its finishing zone. It
-# does that by varying the turn count instead of rotating the cycle.
-static func test_easy_starts_at_top_and_varies_zone() -> bool:
-	var board_def := BoardDefinition.new(8)
+# EASY always begins erasing at TOP and always uses the X-wedge eraser. With only 3- and
+# 4-turn sequences that leaves exactly two finishing zones, which is expected.
+static func test_easy_board_is_fixed() -> bool:
+	var board_def := BoardDefinition.new(8, Vector2(64, 64), 0, EraserSystem.ErasureShape.HALF_PLANE)
 	PuzzleGenerator.reset_zone_rotation()
 
 	var zones := {}
-	for i in range(4):
-		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, true)
+	var lengths := {}
+
+	for i in range(8):
+		# Deliberately hand it a HALF_PLANE board and a turn request; EASY must override
+		# both, because its sequences only hold together under the wedge eraser.
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 6, 2, PuzzleGenerator.Difficulty.EASY)
 
 		if puzzle.board_definition.erasure_start_phase != EraserSystem.ErasureRegion.TOP:
 			return false
+		if puzzle.board_definition.erasure_shape != EraserSystem.ErasureShape.DIAGONAL_WEDGE:
+			return false
 		if EraserSystem.get_phase_for_turn(0, puzzle.board_definition) != EraserSystem.ErasureRegion.TOP:
 			return false
-		if puzzle.max_turns < PuzzleGenerator.DEFAULT_MIN_TURNS or puzzle.max_turns > PuzzleGenerator.DEFAULT_MAX_TURNS:
+		if puzzle.max_turns < PuzzleGenerator.EASY_MIN_TURNS or puzzle.max_turns > PuzzleGenerator.EASY_MAX_TURNS:
 			return false
 
 		zones[puzzle.final_erasure_zone] = true
+		lengths[puzzle.max_turns] = true
 
-	return zones.size() == EraserSystem.PHASE_COUNT
+	# Both branches of the tree, and the two zones they imply
+	if lengths.size() != 2: return false
+	if zones.size() != 2: return false
+	if not zones.has(EraserSystem.ErasureRegion.BOTTOM): return false
+	if not zones.has(EraserSystem.ErasureRegion.LEFT): return false
+
+	return true
 
 # The target must never already be on screen after the opening turn.
 static func test_never_completed_on_first_turn() -> bool:
 	var board_def := BoardDefinition.new(8)
 
-	for is_easy in [true, false]:
-		for i in range(4):
-			var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, is_easy)
+	for tier in PuzzleGenerator.DIFFICULTY_ORDER:
+		for i in range(2):
+			var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, tier)
 			if puzzle.completion_turn < 1:
 				return false
 
 			# No opening shape may hand the player the target either
-			var candidates := PuzzleGenerator.generate_candidate_pool(puzzle.board_definition, is_easy)
+			var candidates := PuzzleGenerator.generate_candidate_pool(puzzle.board_definition, tier)
 			if not PuzzleValidator.validate_not_completable_on_first_turn(
 					puzzle.reference_solution, puzzle.target_geometry, puzzle.board_definition, candidates):
 				return false
@@ -256,7 +293,7 @@ static func test_last_draw_not_always_final_turn() -> bool:
 
 	var early_finishes := 0
 	for i in range(8):
-		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, true)
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.EASY)
 
 		var last_draw := -1
 		for t in range(puzzle.max_turns):
@@ -280,8 +317,8 @@ static func test_both_eraser_shapes_generate() -> bool:
 	var wedge_board := BoardDefinition.new(8, Vector2(64, 64), 0, EraserSystem.ErasureShape.DIAGONAL_WEDGE)
 	var half_board := BoardDefinition.new(8, Vector2(64, 64), 0, EraserSystem.ErasureShape.HALF_PLANE)
 
-	var wedge_puzzle := PuzzleGenerator.generate_puzzle(wedge_board, 0, 3, false)
-	var half_puzzle := PuzzleGenerator.generate_puzzle(half_board, 0, 3, false)
+	var wedge_puzzle := PuzzleGenerator.generate_puzzle(wedge_board, 0, 3, PuzzleGenerator.Difficulty.NORMAL)
+	var half_puzzle := PuzzleGenerator.generate_puzzle(half_board, 0, 3, PuzzleGenerator.Difficulty.NORMAL)
 
 	for puzzle in [wedge_puzzle, half_puzzle]:
 		if puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
@@ -304,3 +341,145 @@ static func test_both_eraser_shapes_generate() -> bool:
 	if half_puzzle.required_shape_count != 3: return false
 
 	return true
+
+# The EASY space is exactly six sequences and nothing else.
+static func test_easy_sequence_set_is_exactly_six() -> bool:
+	var sequences := PuzzleGenerator.get_easy_sequences()
+	if sequences.size() != 6:
+		return false
+
+	var expected := [
+		[1, 0, 1],       # D S D
+		[1, 1, 0],       # D D S
+		[1, 1, 1],       # D D D
+		[0, 1, 0, 1],    # S D S D
+		[0, 1, 1, 0],    # S D D S
+		[0, 1, 1, 1],    # S D D D
+	]
+
+	for want in expected:
+		if not sequences.has(want):
+			return false
+
+	for sequence in sequences:
+		# 3 or 4 turns only
+		if sequence.size() < PuzzleGenerator.EASY_MIN_TURNS: return false
+		if sequence.size() > PuzzleGenerator.EASY_MAX_TURNS: return false
+		# Never two Skips in a row -- the invalid branch of the tree
+		for i in range(sequence.size() - 1):
+			if sequence[i] == 0 and sequence[i + 1] == 0:
+				return false
+
+	return true
+
+# Every generated EASY puzzle must be one of the six, and across a batch all six appear.
+static func test_easy_covers_all_six_sequences() -> bool:
+	var board_def := BoardDefinition.new(8)
+	PuzzleGenerator.reset_zone_rotation()
+
+	var legal := PuzzleGenerator.get_easy_sequences()
+	var seen := {}
+
+	for i in range(12):
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.EASY)
+
+		var actions: Array[int] = []
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			actions.append(1 if (act != null and act.shape_instance != null) else 0)
+
+		if not legal.has(actions):
+			return false
+
+		# No silent degradation to the fallback generator
+		if puzzle.required_shape_count < 2:
+			return false
+
+		seen[str(actions)] = true
+
+	# Two full bag draws must cover the whole space
+	return seen.size() == legal.size()
+
+# EASY+ is EASY with the opening erasure rotated: same six sequences, same simple shapes,
+# but the puzzle can now start on any quarter instead of always the top.
+static func test_easy_plus_rotates_opening() -> bool:
+	var board_def := BoardDefinition.new(8)
+	PuzzleGenerator.reset_zone_rotation()
+
+	var legal := PuzzleGenerator.get_easy_sequences()
+	var openings := {}
+	var zones := {}
+
+	for i in range(12):
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.EASY_PLUS)
+
+		# Still the wedge eraser and still one of the six sequences
+		if puzzle.board_definition.erasure_shape != EraserSystem.ErasureShape.DIAGONAL_WEDGE:
+			return false
+		if puzzle.max_turns < PuzzleGenerator.EASY_MIN_TURNS: return false
+		if puzzle.max_turns > PuzzleGenerator.EASY_MAX_TURNS: return false
+
+		var actions: Array[int] = []
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			actions.append(1 if (act != null and act.shape_instance != null) else 0)
+		if not legal.has(actions):
+			return false
+		if puzzle.required_shape_count < 2:
+			return false
+
+		# Still restricted to simple shapes
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			if act != null and act.shape_instance != null:
+				if not _is_simple_shape(act.shape_instance, puzzle.board_definition):
+					return false
+
+		openings[EraserSystem.get_phase_for_turn(0, puzzle.board_definition)] = true
+		zones[puzzle.final_erasure_zone] = true
+
+	# The whole point of the tier: openings and finishing zones both spread
+	return openings.size() == EraserSystem.PHASE_COUNT and zones.size() == EraserSystem.PHASE_COUNT
+
+# EASY++ is EASY+ with the full shape vocabulary instead of the predefined simple set.
+static func test_easy_plus_plus_uses_harder_shapes() -> bool:
+	var board_def := BoardDefinition.new(8)
+
+	var simple_pool := PuzzleGenerator.generate_candidate_pool(board_def, PuzzleGenerator.Difficulty.EASY_PLUS)
+	var hard_pool := PuzzleGenerator.generate_candidate_pool(board_def, PuzzleGenerator.Difficulty.EASY_PLUS_PLUS)
+
+	if hard_pool.size() <= simple_pool.size():
+		return false
+
+	PuzzleGenerator.reset_zone_rotation()
+
+	var legal := PuzzleGenerator.get_easy_sequences()
+	var saw_non_simple := false
+
+	for i in range(12):
+		var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, PuzzleGenerator.Difficulty.EASY_PLUS_PLUS)
+
+		# The tree still governs timing
+		var actions: Array[int] = []
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			actions.append(1 if (act != null and act.shape_instance != null) else 0)
+		if not legal.has(actions):
+			return false
+		if puzzle.required_shape_count < 2:
+			return false
+
+		for t in range(puzzle.max_turns):
+			var act := puzzle.reference_solution.get_action(t)
+			if act != null and act.shape_instance != null:
+				if not _is_simple_shape(act.shape_instance, puzzle.board_definition):
+					saw_non_simple = true
+
+	# Over a batch it must actually reach beyond the simple set
+	return saw_non_simple
+
+static func _is_simple_shape(shape: ShapeInstance, board_def: BoardDefinition) -> bool:
+	for simple in PuzzleGenerator.generate_candidate_pool(board_def, PuzzleGenerator.Difficulty.EASY):
+		if simple.geometry.is_equivalent_to(shape.geometry):
+			return true
+	return false

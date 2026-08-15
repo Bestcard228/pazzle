@@ -9,9 +9,10 @@ extends Button
 # still come from the normal Button styling.
 
 enum IconKind {
-	DIFFICULTY,   # state: 0 = normal, 1 = easy
+	DIFFICULTY,   # state: 1-based rank on the difficulty ladder
 	TURN_COUNT,   # state: 0 = random, otherwise the fixed turn count
 	ERASER_SHAPE, # state: EraserSystem.ErasureShape value
+	REVEAL,       # state: 0 = solution hidden, 1 = solution shown
 }
 
 const COLOR_ON := Color(0.55, 0.80, 1.00)
@@ -32,18 +33,20 @@ func _draw() -> void:
 		IconKind.DIFFICULTY: _draw_difficulty(box)
 		IconKind.TURN_COUNT: _draw_turn_count(box)
 		IconKind.ERASER_SHAPE: _draw_eraser_shape(box)
+		IconKind.REVEAL: _draw_reveal(box)
 
-# Rising bars: one lit for easy, all three for normal.
+# Rising bars, one per rung of the ladder: Easy, Easy+, Easy++, Normal.
 func _draw_difficulty(box: Rect2) -> void:
-	var lit := 1 if icon_state == 1 else 3
-	var bar_w := 6.0
-	var gap := 5.0
-	var total := bar_w * 3.0 + gap * 2.0
+	var bars := 4
+	var lit: int = clampi(icon_state, 1, bars)
+	var bar_w := 5.0
+	var gap := 4.0
+	var total := bar_w * bars + gap * (bars - 1)
 	var x := box.position.x + (box.size.x - total) * 0.5
-	var base := box.position.y + box.size.y * 0.72
+	var base := box.position.y + box.size.y * 0.74
 
-	for i in range(3):
-		var h: float = 8.0 + i * 7.0
+	for i in range(bars):
+		var h: float = 7.0 + i * 5.0
 		var r := Rect2(x + i * (bar_w + gap), base - h, bar_w, h)
 		if i < lit:
 			draw_rect(r, COLOR_ON)
@@ -104,6 +107,33 @@ func _draw_eraser_shape(box: Rect2) -> void:
 		draw_line(center - d * radius, center + d * radius, COLOR_ON, 1.5)
 
 	draw_arc(center, radius, 0, TAU, 32, COLOR_ON, 2.0)
+
+# An eye: open when the solution is showing, struck through when it is hidden.
+func _draw_reveal(box: Rect2) -> void:
+	var center := box.position + box.size * 0.5
+	var w := minf(box.size.x, box.size.y) * 0.38
+	var h := w * 0.62
+	var shown := icon_state == 1
+	var color := COLOR_ON if shown else COLOR_OFF
+
+	# Lid outlines, drawn as two arcs bulging away from the centre line
+	var steps := 14
+	var upper := PackedVector2Array()
+	var lower := PackedVector2Array()
+	for i in range(steps + 1):
+		var tx := -1.0 + 2.0 * (float(i) / float(steps))
+		var bulge := (1.0 - tx * tx) * h
+		upper.append(center + Vector2(tx * w, -bulge))
+		lower.append(center + Vector2(tx * w, bulge))
+
+	for i in range(steps):
+		draw_line(upper[i], upper[i + 1], color, 2.0)
+		draw_line(lower[i], lower[i + 1], color, 2.0)
+
+	if shown:
+		draw_circle(center, h * 0.62, color)
+	else:
+		draw_line(center + Vector2(-w, h), center + Vector2(w, -h), color, 2.5)
 
 func _draw_sector(center: Vector2, radius: float, start_angle: float, span: float, color: Color) -> void:
 	var steps := 16

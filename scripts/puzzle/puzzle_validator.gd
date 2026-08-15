@@ -24,6 +24,42 @@ static func validate_necessary_contributions(solution: PuzzleSolution, target: V
 
 	return total_drawn > 0
 
+# Necessity restricted to one stage of a chained puzzle.
+#
+# In a two-stage puzzle the first half's shapes are wiped long before the final target is
+# read, so they can never satisfy validate_necessary_contributions(). What they must do
+# instead is matter to the state at the seam. This checks exactly that: every shape drawn
+# in [from_turn, to_turn] must change the drawing as it stands at `to_turn`.
+static func validate_stage_contributions(
+	solution: PuzzleSolution,
+	board_def: BoardDefinition,
+	from_turn: int,
+	to_turn: int
+) -> bool:
+	if solution == null or board_def == null or from_turn > to_turn:
+		return false
+
+	var stage_state := PuzzleSimulator.simulate_up_to_turn(solution, board_def, to_turn)
+	if stage_state.is_empty():
+		return false
+
+	var drawn := 0
+	for turn in range(from_turn, to_turn + 1):
+		var action := solution.get_action(turn)
+		if action == null or action.shape_instance == null:
+			continue
+
+		drawn += 1
+
+		var test_sol := solution.duplicate_solution()
+		test_sol.clear_action(turn)
+
+		# Removing it must change the state at the seam, or it was never needed
+		if PuzzleSimulator.simulate_up_to_turn(test_sol, board_def, to_turn).is_equivalent_to(stage_state):
+			return false
+
+	return drawn > 0
+
 # Verifies that a target CANNOT be solved by a single shape on a single turn.
 # `turns_to_test` limits the search to turns that can actually survive; pass an empty
 # array to test every turn.

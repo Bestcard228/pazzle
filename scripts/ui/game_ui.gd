@@ -6,17 +6,22 @@ var current_solution: PuzzleSolution
 var current_turn: int = 0
 var game_cleared: bool = false
 
-var is_easy_mode: bool = false
+var difficulty: int = PuzzleGenerator.Difficulty.NORMAL
 var selected_turn_limit: int = 0 # 0 means random 4-7 turns
 
 # Tapping the turns button steps through these
 const TURN_CHOICES: Array[int] = [0, 4, 5, 6, 7]
 var erasure_shape: int = EraserSystem.ErasureShape.DIAGONAL_WEDGE
 
+# Revealing the intended shapes and their order is an Easy-mode aid only.
+var solution_revealed: bool = false
+
 @onready var drawing_board: DrawingBoard = $DrawingBoard
 @onready var input_handler: InputHandler = $InputHandler
 @onready var target_display: TargetDisplay = $HUD/TargetDisplay
 @onready var turn_timeline: TurnTimeline = $HUD/TurnTimeline
+@onready var solution_strip: SolutionStrip = $HUD/SolutionStrip
+@onready var btn_reveal: IconButton = $HUD/BtnReveal
 @onready var label_status: Label = $HUD/StatusLabel
 @onready var btn_reset: Button = $Controls/BtnReset
 @onready var btn_skip: Button = $Controls/BtnSkip
@@ -32,6 +37,7 @@ func _ready() -> void:
 	btn_mode.pressed.connect(_on_mode_toggled)
 	btn_eraser.pressed.connect(_on_eraser_toggled)
 	btn_turns.pressed.connect(_on_turns_cycled)
+	btn_reveal.pressed.connect(_on_reveal_toggled)
 	_refresh_selector_icons()
 
 	input_handler.shape_drawn.connect(_on_shape_drawn)
@@ -46,9 +52,14 @@ func _on_turns_cycled() -> void:
 	load_new_puzzle()
 
 func _on_mode_toggled() -> void:
-	is_easy_mode = not is_easy_mode
+	var order := PuzzleGenerator.DIFFICULTY_ORDER
+	var next := (order.find(difficulty) + 1) % order.size()
+	difficulty = order[next]
 	_refresh_selector_icons()
 	load_new_puzzle()
+
+func is_easy_mode() -> bool:
+	return PuzzleGenerator.uses_sequence_tree(difficulty)
 
 func _on_eraser_toggled() -> void:
 	erasure_shape = (EraserSystem.ErasureShape.HALF_PLANE
@@ -57,24 +68,53 @@ func _on_eraser_toggled() -> void:
 	_refresh_selector_icons()
 	load_new_puzzle()
 
-func _refresh_selector_icons() -> void:
-	btn_mode.set_icon_state(1 if is_easy_mode else 0)
-	btn_turns.set_icon_state(selected_turn_limit)
-	btn_eraser.set_icon_state(erasure_shape)
+func _on_reveal_toggled() -> void:
+	solution_revealed = not solution_revealed
+	_refresh_reveal()
 
-	# Tooltips carry the wording the buttons no longer show
-	btn_mode.tooltip_text = "Difficulty: %s" % ("Easy" if is_easy_mode else "Normal")
+func _refresh_reveal() -> void:
+	# Easy-mode aid only: outside Easy the control is hidden and the strip stays dark.
+	btn_reveal.visible = is_easy_mode()
+	solution_strip.visible = is_easy_mode()
+
+	if not is_easy_mode():
+		solution_revealed = false
+
+	btn_reveal.set_icon_state(1 if solution_revealed else 0)
+	btn_reveal.tooltip_text = ("Hide the intended solution" if solution_revealed
+		else "Show the intended solution")
+	solution_strip.set_revealed(solution_revealed)
+
+func _refresh_selector_icons() -> void:
+	btn_mode.set_icon_state(PuzzleGenerator.get_difficulty_rank(difficulty))
+	btn_mode.tooltip_text = "Difficulty: %s" % PuzzleGenerator.get_difficulty_name(difficulty)
+
+	# Every Easy tier is fully described by its six Draw/Skip sequences: they fix the turn
+	# count, and they only hold together under the X-wedge eraser. Neither control has
+	# anything left to decide, so both are disabled rather than silently ignored.
+	btn_turns.disabled = is_easy_mode()
+	btn_eraser.disabled = is_easy_mode()
+
+	if is_easy_mode():
+		btn_turns.set_icon_state(0)
+		btn_turns.tooltip_text = "Turns: set by the %s pattern (3-4)" % PuzzleGenerator.get_difficulty_name(difficulty)
+		btn_eraser.set_icon_state(EraserSystem.ErasureShape.DIAGONAL_WEDGE)
+		btn_eraser.tooltip_text = "Eraser: X-WEDGE (fixed in %s)" % PuzzleGenerator.get_difficulty_name(difficulty)
+		return
+
+	btn_turns.set_icon_state(selected_turn_limit)
 	btn_turns.tooltip_text = ("Turns: random 4-7" if selected_turn_limit <= 0
 		else "Turns: %d" % selected_turn_limit)
+	btn_eraser.set_icon_state(erasure_shape)
 	btn_eraser.tooltip_text = "Eraser: %s" % EraserSystem.get_shape_name(erasure_shape)
 
 func load_new_puzzle() -> void:
 	var board_def := BoardDefinition.new(8, Vector2(64, 64), 0, erasure_shape)
 	# The generator clamps this to the board's real survivable window, so the wedge eraser
 	# gets genuine three-shape puzzles while the half-plane eraser still settles at two.
-	var req_shapes := 2 if is_easy_mode else 3
+	var req_shapes := 2 if is_easy_mode() else 3
 
-	current_puzzle = PuzzleGenerator.generate_puzzle(board_def, selected_turn_limit, req_shapes, is_easy_mode)
+	current_puzzle = PuzzleGenerator.generate_puzzle(board_def, selected_turn_limit, req_shapes, difficulty)
 	current_solution = PuzzleSolution.new(current_puzzle.max_turns)
 	current_turn = 0
 	game_cleared = false
@@ -84,6 +124,11 @@ func load_new_puzzle() -> void:
 	input_handler.setup(current_puzzle.board_definition, drawing_board.node_screen_positions)
 	target_display.set_target(current_puzzle.target_geometry, current_puzzle.board_definition)
 	turn_timeline.setup(current_puzzle.board_definition, current_puzzle.max_turns)
+
+	# A new puzzle starts concealed, so the aid is always a deliberate tap
+	solution_revealed = false
+	solution_strip.set_solution(current_puzzle.reference_solution, current_puzzle.board_definition)
+	_refresh_reveal()
 
 	_update_ui()
 
