@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://c8s7t1nap4q0x"]
+[gd_scene load_steps=12 format=3 uid="uid://c8s7t1nap4q0x"]
 
 [ext_resource type="Script" uid="uid://bpnnghsf23ftn" path="res://scripts/ui/game_ui.gd" id="1_ui"]
 [ext_resource type="Script" uid="uid://blpuivf4cdnwi" path="res://scripts/ui/drawing_board.gd" id="2_board"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://goans2hpome0" path="res://scripts/ui/icon_button.gd" id="6_icon"]
 [ext_resource type="Script" uid="uid://bj0lxs0j8hyw5" path="res://scripts/ui/solution_strip.gd" id="7_solution"]
 [ext_resource type="Shader" path="res://shaders/pixel_filter.gdshader" id="8_pixel"]
+[ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="9_menu"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font_size = 26
@@ -69,7 +70,7 @@ offset_top = 32.0
 offset_right = 180.0
 offset_bottom = 70.0
 grow_horizontal = 2
-text = "SHAPE TIMING PUZZLE"
+text = ""
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -183,6 +184,16 @@ offset_bottom = 236.0
 tooltip_text = "Walk me through it"
 script = ExtResource("6_icon")
 icon_kind = 10
+
+[node name="BtnMenu" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 163.0
+offset_top = 188.0
+offset_right = 227.0
+offset_bottom = 236.0
+tooltip_text = "Back to the menu"
+script = ExtResource("6_icon")
+icon_kind = 11
 
 [node name="SolutionStrip" type="Control" parent="HUD"]
 layout_mode = 1
@@ -307,6 +318,62 @@ layout_mode = 2
 custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 text = "NEW PUZZLE"
+
+[node name="MainMenu" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("9_menu")
+
+[node name="MenuBackground" type="ColorRect" parent="MainMenu"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.08, 0.09, 0.14, 1)
+
+[node name="BtnStory" type="Button" parent="MainMenu"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -130.0
+offset_top = 560.0
+offset_right = 130.0
+offset_bottom = 628.0
+grow_horizontal = 2
+text = "STORY"
+
+[node name="BtnDebug" type="Button" parent="MainMenu"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -130.0
+offset_top = 648.0
+offset_right = 130.0
+offset_bottom = 716.0
+grow_horizontal = 2
+text = "DEBUG"
+
+[node name="ProgressLabel" type="Label" parent="MainMenu"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -230.0
+offset_top = 510.0
+offset_right = 230.0
+offset_bottom = 544.0
+grow_horizontal = 2
+text = ""
+horizontal_alignment = 1
 
 [node name="PixelFilter" type="CanvasLayer" parent="."]
 layer = 100

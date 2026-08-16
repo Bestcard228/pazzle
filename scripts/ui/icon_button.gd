@@ -20,6 +20,7 @@ enum IconKind {
 	LAYERS,       # state: how many colour layers, 1 = the original single-colour game
 	TURN_CLOCK,   # state: index into PuzzleGenerator.TURN_TIME_CHOICES, 0 = off
 	TUTORIAL,     # state: 0 = idle, 1 = lesson running
+	MENU,         # state: unused
 }
 
 const COLOR_ON := Color(0.55, 0.80, 1.00)
@@ -48,6 +49,7 @@ func _draw() -> void:
 		IconKind.LAYERS: _draw_layers(box)
 		IconKind.TURN_CLOCK: _draw_turn_clock(box)
 		IconKind.TUTORIAL: _draw_tutorial(box)
+		IconKind.MENU: _draw_menu(box)
 
 # Rising bars, one per rung of the ladder: Easy, Easy+, Easy++, Medium. State 0 is Auto,
 # where the ladder is drawn empty with the shuffle arrow over it.
@@ -359,6 +361,24 @@ func _draw_tutorial(box: Rect2) -> void:
 	draw_circle(b, 6.0, Color(color.r, color.g, color.b, 0.30))
 	if running:
 		draw_arc(b, 9.0, 0, TAU, 20, Color(color.r, color.g, color.b, 0.6), 1.5)
+
+# An arrow turning back on itself: out of the puzzle, back to the menu.
+func _draw_menu(box: Rect2) -> void:
+	var center := box.position + box.size * 0.5
+	var r := minf(box.size.x, box.size.y) * 0.26
+
+	draw_arc(center, r, -PI * 0.85, PI * 0.5, 24, COLOR_ON, 2.5)
+
+	var tip := center + Vector2(cos(-PI * 0.85), sin(-PI * 0.85)) * r
+	var tangent := Vector2(-sin(-PI * 0.85), cos(-PI * 0.85))
+	var normal := Vector2(cos(-PI * 0.85), sin(-PI * 0.85))
+	draw_colored_polygon(PackedVector2Array([
+		tip - tangent * 5.5,
+		tip + tangent * 2.0 + normal * 4.0,
+		tip + tangent * 2.0 - normal * 4.0,
+	]), COLOR_ON)
+
+	draw_circle(center, r * 0.3, Color(COLOR_ON.r, COLOR_ON.g, COLOR_ON.b, 0.45))
 
 func _draw_sector(center: Vector2, radius: float, start_angle: float, span: float, color: Color) -> void:
 	var steps := 16

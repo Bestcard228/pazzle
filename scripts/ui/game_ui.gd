@@ -30,6 +30,15 @@ var _clock_running: bool = false
 
 # The lesson. It plays through exactly the same code path as a generated puzzle -- the
 # only difference is that a ghost keeps showing what to do until it is done.
+# Which way in the player took. DEBUG is everything unlocked at once -- the game as it
+# was before the run existed -- and STORY is the ordered set of tasks.
+enum AppMode { MENU, STORY, DEBUG }
+const STORY_SAVE_PATH := "user://story_progress.cfg"
+
+var app_mode: int = AppMode.MENU
+var story_task: int = 0
+var story_task_cleared: bool = false
+
 var tutorial: TutorialController
 var tutorial_active: bool = false
 var _tutorial_prompt_t: float = 0.0
@@ -84,6 +93,11 @@ var _status_override_time: float = 0.0
 @onready var btn_layers: IconButton = $HUD/BtnLayers
 @onready var btn_timer: IconButton = $HUD/BtnTimer
 @onready var btn_tutorial: IconButton = $HUD/BtnTutorial
+@onready var btn_menu: IconButton = $HUD/BtnMenu
+@onready var main_menu: MainMenu = $MainMenu
+@onready var hud: Control = $HUD
+@onready var controls: HBoxContainer = $Controls
+@onready var title_label: Label = $HUD/TitleLabel
 @onready var pixel_filter: CanvasLayer = $PixelFilter
 @onready var label_status: Label = $HUD/StatusLabel
 @onready var btn_reset: Button = $Controls/BtnReset
@@ -112,6 +126,8 @@ func _ready() -> void:
 	btn_layers.pressed.connect(_on_layers_cycled)
 	btn_timer.pressed.connect(_on_timer_cycled)
 	btn_tutorial.pressed.connect(_on_tutorial_pressed)
+	btn_menu.pressed.connect(_on_menu_pressed)
+	main_menu.mode_chosen.connect(_on_mode_chosen)
 	_refresh_pixel_filter()
 	_refresh_selector_icons()
 	_refresh_selector_availability()
@@ -133,10 +149,11 @@ func _ready() -> void:
 	target_display.pivot_offset = target_display.size / 2.0
 	checkpoint_display.pivot_offset = checkpoint_display.size / 2.0
 
-	load_new_puzzle()
+	_load_story_progress()
+	_show_menu()
 
 func _process(delta: float) -> void:
-	if current_puzzle == null:
+	if current_puzzle == null or app_mode == AppMode.MENU:
 		return
 
 	if _status_override_time > 0.0:
@@ -612,6 +629,10 @@ func _check_victory() -> void:
 		tutorial = null
 		drawing_board.clear_hint()
 		_refresh_selector_availability()
+	if app_mode == AppMode.STORY:
+		story_task_cleared = true
+		_refresh_selector_availability()
+
 	label_status.text = "★ SOLVED ★"
 	label_status.modulate = Color(0.2, 0.95, 0.5)
 	_pop(label_status, 1.35, 0.45)
@@ -679,6 +700,14 @@ func _on_reset_pressed() -> void:
 	_update_ui()
 
 func _on_new_puzzle_pressed() -> void:
+	if app_mode == AppMode.STORY:
+		if story_task_cleared:
+			_advance_story_task()
+		else:
+			# Same task, fresh puzzle: a retry, not a way to skip past it
+			_start_story_task()
+		return
+
 	load_new_puzzle()
 
 # Colour for colour when there are layers, and against the one goal when there are not.
@@ -787,6 +816,82 @@ func _refresh_pixel_filter() -> void:
 	btn_pixel.tooltip_text = ("Pixel-art filter: on" if pixel_filter_enabled
 		else "Pixel-art filter: off")
 
+# --- Menu and the story run ----------------------------------------------------------
+
+func _show_menu() -> void:
+	app_mode = AppMode.MENU
+	main_menu.visible = true
+	main_menu.set_story_progress(story_task)
+	hud.visible = false
+	controls.visible = false
+	drawing_board.visible = false
+	input_handler.set_enabled(false)
+
+func _on_menu_pressed() -> void:
+	if tutorial_active:
+		tutorial_active = false
+		tutorial = null
+		drawing_board.clear_hint()
+	_show_menu()
+
+func _on_mode_chosen(story: bool) -> void:
+	app_mode = AppMode.STORY if story else AppMode.DEBUG
+	main_menu.visible = false
+	hud.visible = true
+	controls.visible = true
+	drawing_board.visible = true
+
+	if app_mode == AppMode.STORY:
+		if StoryCampaign.is_finished(story_task):
+			story_task = 0
+		_start_story_task()
+	else:
+		title_label.text = ""
+		_refresh_selector_availability()
+		load_new_puzzle()
+
+# A story task is the same generated puzzle as any other -- the run only decides what to
+# ask the generator for.
+func _start_story_task() -> void:
+	story_task_cleared = false
+	difficulty = StoryCampaign.difficulty_for_task(story_task)
+	erasure_cycle_id = StoryCampaign.cycle_for_task(story_task)
+	input_mode = StoryCampaign.input_mode_for_task(story_task)
+	layer_count = StoryCampaign.layers_for_task(story_task)
+	turn_time_limit = StoryCampaign.clock_for_task(story_task)
+	selected_mode = difficulty
+	title_label.text = StoryCampaign.progress_label(story_task)
+
+	if StoryCampaign.is_tutorial_task(story_task):
+		_start_tutorial()
+		return
+
+	_refresh_selector_availability()
+	load_new_puzzle()
+
+func _advance_story_task() -> void:
+	story_task += 1
+	_save_story_progress()
+
+	if StoryCampaign.is_finished(story_task):
+		title_label.text = "STORY COMPLETE"
+		_flash_status("★ STORY COMPLETE ★", Color(0.2, 0.95, 0.5), 4.0)
+		return
+
+	_start_story_task()
+
+func _load_story_progress() -> void:
+	var config := ConfigFile.new()
+	if config.load(STORY_SAVE_PATH) != OK:
+		story_task = 0
+		return
+	story_task = clampi(int(config.get_value("story", "task", 0)), 0, StoryCampaign.total_tasks())
+
+func _save_story_progress() -> void:
+	var config := ConfigFile.new()
+	config.set_value("story", "task", story_task)
+	config.save(STORY_SAVE_PATH)
+
 # --- Tutorial ------------------------------------------------------------------------
 
 func _on_tutorial_pressed() -> void:
@@ -851,9 +956,16 @@ func _end_tutorial() -> void:
 # cannot swap the puzzle out from under the lesson.
 func _refresh_selector_availability() -> void:
 	btn_tutorial.set_icon_state(1 if tutorial_active else 0)
+
+	# The run picks the settings for each task, so they are on show but not on offer;
+	# during the lesson nothing is, except the button it is pointing at.
+	var locked := tutorial_active or app_mode == AppMode.STORY
 	for button in [btn_mode, btn_turns, btn_eraser, btn_direction, btn_input_mode,
-			btn_layers, btn_timer, btn_new_puzzle]:
-		button.disabled = tutorial_active
+			btn_layers, btn_timer]:
+		button.disabled = locked
+	btn_tutorial.disabled = app_mode == AppMode.STORY
+	btn_new_puzzle.disabled = tutorial_active
+	btn_new_puzzle.text = "NEXT" if (app_mode == AppMode.STORY and story_task_cleared) else "NEW PUZZLE"
 
 # The prompt repeats for as long as it is not obeyed. A ghost that keeps retracing the
 # shape is the whole instruction -- there is nothing to read and nothing to dismiss.
