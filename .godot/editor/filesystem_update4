@@ -1,0 +1,14 @@
+res://scripts/board/board_definition.gd
+res://scripts/board/eraser_system.gd
+res://scripts/puzzle/puzzle_generator.gd
+res://scripts/ui/game_ui.gd
+res://scripts/ui/icon_button.gd
+res://scripts/puzzle/puzzle_data.gd
+res://scripts/puzzle/puzzle_validator.gd
+res://scripts/ui/drawing_board.gd
+res://scripts/ui/input_handler.gd
+res://scripts/ui/solution_strip.gd
+res://scripts/ui/turn_timeline.gd
+res://scripts/core/puzzle_simulator.gd
+res://scripts/ui/target_display.gd
+res://tests/test_layers.gd

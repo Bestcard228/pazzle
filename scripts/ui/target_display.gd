@@ -16,6 +16,10 @@ const FADE_IN_TIME := 0.35  # seconds for a fresh goal to arrive
 # at a delay.
 signal fade_out_finished
 
+# When the puzzle has colour layers the goal is per layer, drawn in each layer's ink.
+var layer_targets: Array[VectorGeometry] = []
+var layer_count: int = 1
+
 var target_geometry: VectorGeometry
 var board_def: BoardDefinition
 var is_matched: bool = false
@@ -51,6 +55,11 @@ func set_target(p_target: VectorGeometry, p_board_def: BoardDefinition) -> void:
 
 # Turns the goal card green once the board matches it, so the match is visible where the
 # player is already looking rather than only in a status line.
+func set_layer_targets(p_targets: Array[VectorGeometry], p_layer_count: int) -> void:
+	self.layer_targets = p_targets.duplicate()
+	self.layer_count = p_layer_count
+	queue_redraw()
+
 func set_matched(p_matched: bool) -> void:
 	self.is_matched = p_matched
 	queue_redraw()
@@ -93,6 +102,22 @@ func _draw_field(center: Vector2, scale_factor: float) -> void:
 
 func _draw_target(center: Vector2, scale_factor: float, fade_alpha: float = 1.0) -> void:
 	if target_geometry == null or target_geometry.is_empty():
+		return
+
+	# A layered goal is read colour for colour, so it has to be shown that way -- the
+	# merged outline would not say which colour has to end up where.
+	if layer_count > 1 and not layer_targets.is_empty():
+		for layer in range(layer_targets.size()):
+			var geom: VectorGeometry = layer_targets[layer]
+			if geom == null:
+				continue
+			var layer_ink := (COLOR_MATCHED if is_matched
+				else LayerSystem.get_layer_color(layer, layer_count))
+			for seg in geom.segments:
+				var lp1 := center + (seg.p1 - board_def.center) * scale_factor
+				var lp2 := center + (seg.p2 - board_def.center) * scale_factor
+				draw_line(lp1, lp2, Color(layer_ink.r, layer_ink.g, layer_ink.b, 0.3 * fade_alpha), 7.0)
+				draw_line(lp1, lp2, Color(layer_ink.r, layer_ink.g, layer_ink.b, fade_alpha), 3.0)
 		return
 
 	var ink := COLOR_MATCHED if is_matched else COLOR_TARGET

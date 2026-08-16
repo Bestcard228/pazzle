@@ -134,6 +134,56 @@ tooltip_text = "Pixel-art filter"
 script = ExtResource("6_icon")
 icon_kind = 5
 
+[node name="BtnDirection" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 89.0
+offset_top = 130.0
+offset_right = 153.0
+offset_bottom = 178.0
+tooltip_text = "Erasure direction"
+script = ExtResource("6_icon")
+icon_kind = 6
+
+[node name="BtnInputMode" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 163.0
+offset_top = 130.0
+offset_right = 227.0
+offset_bottom = 178.0
+tooltip_text = "Draw the shapes, or choose the erasures"
+script = ExtResource("6_icon")
+icon_kind = 7
+
+[node name="BtnLayers" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 237.0
+offset_top = 130.0
+offset_right = 301.0
+offset_bottom = 178.0
+tooltip_text = "Colour layers"
+script = ExtResource("6_icon")
+icon_kind = 8
+
+[node name="BtnTimer" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 15.0
+offset_top = 188.0
+offset_right = 79.0
+offset_bottom = 236.0
+tooltip_text = "Turn clock"
+script = ExtResource("6_icon")
+icon_kind = 9
+
+[node name="BtnTutorial" type="Button" parent="HUD"]
+layout_mode = 1
+offset_left = 89.0
+offset_top = 188.0
+offset_right = 153.0
+offset_bottom = 236.0
+tooltip_text = "Walk me through it"
+script = ExtResource("6_icon")
+icon_kind = 10
+
 [node name="SolutionStrip" type="Control" parent="HUD"]
 layout_mode = 1
 anchors_preset = 7
@@ -155,9 +205,9 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -255.0
-offset_top = 205.0
+offset_top = 244.0
 offset_right = 255.0
-offset_bottom = 272.0
+offset_bottom = 305.0
 grow_horizontal = 2
 script = ExtResource("5_timeline")
 

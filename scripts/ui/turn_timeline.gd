@@ -1,9 +1,16 @@
 class_name TurnTimeline
 extends Control
 
-# One cell per turn, each showing which half of the board that turn erases. The player
-# can read the whole erasure schedule off this strip instead of being told one zone at a
-# time in text, which is what makes planning "when to draw" possible.
+# One cell per turn, showing whichever half of the puzzle is the given one.
+#
+# In DRAW mode that is the erasure schedule: the player can read the whole thing off this
+# strip instead of being told one zone at a time, which is what makes planning "when to
+# draw" possible.
+#
+# In ERASE mode the schedule is the answer, so showing it would hand the puzzle over. The
+# strip flips to the other half instead -- the shape each turn lays down -- and fills the
+# zone back in only for turns the player has already committed, which is their own history
+# rather than a spoiler.
 
 const COLOR_CELL_BG := Color(0.14, 0.16, 0.24, 1.0)
 const COLOR_CELL_BORDER := Color(0.30, 0.35, 0.45, 0.6)
@@ -17,6 +24,16 @@ var max_turns: int = 4
 var current_turn: int = 0
 var drawn_turns: Array[bool] = []
 var _pulse_t: float = 0.0
+
+const COLOR_SHAPE := Color(0.95, 0.75, 0.20)
+const COLOR_DOT := Color(0.40, 0.70, 1.00, 0.45)
+const COLOR_SKIP := Color(0.55, 0.60, 0.72, 0.7)
+
+# ERASE mode: draw the given shapes instead of the schedule, and only show the zones the
+# player has actually committed.
+var shows_shapes: bool = false
+var shape_solution: PuzzleSolution
+var committed_zones: Array[int] = []
 
 func _ready() -> void:
 	set_process(true)
@@ -32,6 +49,15 @@ func setup(p_board_def: BoardDefinition, p_max_turns: int) -> void:
 	drawn_turns.clear()
 	for i in range(self.max_turns):
 		drawn_turns.append(false)
+	queue_redraw()
+
+func set_shape_mode(p_enabled: bool, p_solution: PuzzleSolution) -> void:
+	self.shows_shapes = p_enabled
+	self.shape_solution = p_solution
+	queue_redraw()
+
+func set_committed_zones(p_zones: Array[int]) -> void:
+	self.committed_zones = p_zones.duplicate()
 	queue_redraw()
 
 func set_progress(p_current_turn: int, p_drawn_turns: Array[bool]) -> void:
@@ -58,7 +84,15 @@ func _draw() -> void:
 func _draw_cell(rect: Rect2, turn: int) -> void:
 	var is_past := turn < current_turn
 	var is_current := turn == current_turn
-	var phase := EraserSystem.get_phase_for_turn(turn, board_def)
+
+	# In shape mode the zone is only known for turns already committed; -1 means "not
+	# yours to see yet", and nothing about the schedule is drawn.
+	var phase := -1
+	if shows_shapes:
+		if turn < committed_zones.size():
+			phase = committed_zones[turn]
+	else:
+		phase = EraserSystem.get_phase_for_turn(turn, board_def)
 
 	var dim := 0.35 if is_past else 1.0
 
@@ -79,17 +113,54 @@ func _draw_cell(rect: Rect2, turn: int) -> void:
 		rect.size.x - pad * 2.0, rect.size.x - pad * 2.0)
 	draw_rect(mini, Color(COLOR_MINI_BG.r, COLOR_MINI_BG.g, COLOR_MINI_BG.b, dim))
 
-	var wipe_alpha := 0.9 if is_current else 0.6
-	draw_colored_polygon(_phase_sub_polygon(mini, phase),
-		Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, wipe_alpha * dim))
+	if phase >= 0:
+		var wipe_alpha := 0.9 if is_current else 0.6
+		draw_colored_polygon(_phase_sub_polygon(mini, phase),
+			Color(COLOR_WARN.r, COLOR_WARN.g, COLOR_WARN.b, wipe_alpha * dim))
 
-	# Division lines so the slice shape reads at a glance
-	_draw_division(mini, phase, dim)
+		# Division lines so the slice shape reads at a glance
+		_draw_division(mini, phase, dim)
+
+	if shows_shapes:
+		_draw_turn_shape(mini, turn, dim)
+		return
 
 	# Marker for a turn the player committed a shape on
 	if turn < drawn_turns.size() and drawn_turns[turn]:
 		var dot := Vector2(rect.position.x + rect.size.x * 0.5, rect.position.y + rect.size.y - 7.0)
 		draw_circle(dot, 3.5, Color(COLOR_DRAWN.r, COLOR_DRAWN.g, COLOR_DRAWN.b, dim))
+
+# The shape this turn lays down, on a small copy of the field. A dashed ring means the
+# turn draws nothing, which is as much a part of the given plan as the shapes are.
+func _draw_turn_shape(mini: Rect2, turn: int, dim: float) -> void:
+	if shape_solution == null or board_def == null:
+		return
+
+	var action := shape_solution.get_action(turn)
+	var shape: ShapeInstance = action.shape_instance if action != null else null
+	var center := mini.position + mini.size * 0.5
+	var scale_factor := (mini.size.x * 0.46) / board_def.radius
+
+	if shape == null:
+		var radius := board_def.radius * scale_factor
+		for i in range(10):
+			if i % 2 == 1:
+				continue
+			var a0 := TAU * (float(i) / 10.0)
+			var a1 := TAU * (float(i + 1) / 10.0)
+			draw_arc(center, radius, a0, a1, 4, Color(COLOR_SKIP.r, COLOR_SKIP.g, COLOR_SKIP.b, COLOR_SKIP.a * dim), 1.5)
+		return
+
+	for i in range(board_def.node_count):
+		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
+		draw_circle(pos, 1.5, Color(COLOR_DOT.r, COLOR_DOT.g, COLOR_DOT.b, COLOR_DOT.a * dim))
+
+	if shape.geometry == null:
+		return
+	for seg in shape.geometry.segments:
+		var p1 := center + (seg.p1 - board_def.center) * scale_factor
+		var p2 := center + (seg.p2 - board_def.center) * scale_factor
+		draw_line(p1, p2, Color(COLOR_SHAPE.r, COLOR_SHAPE.g, COLOR_SHAPE.b, dim), 1.8)
 
 func _is_wedge_mode() -> bool:
 	return board_def != null and board_def.erasure_shape == EraserSystem.ErasureShape.DIAGONAL_WEDGE

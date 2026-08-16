@@ -14,6 +14,7 @@ var board_def: BoardDefinition
 var node_screen_positions: Array[Vector2] = []
 var active_node_ids: Array[int] = []
 var is_dragging: bool = false
+var is_enabled: bool = true
 var current_touch_pos: Vector2 = Vector2.ZERO
 var node_hitbox_radius: float = 50.0
 
@@ -45,8 +46,15 @@ func setup(p_board_def: BoardDefinition, p_screen_positions: Array[Vector2]) -> 
 	self.board_def = p_board_def
 	self.node_screen_positions = p_screen_positions.duplicate()
 
+# ERASE mode gives the board a different job, so the swipe input stands down entirely
+# rather than competing for the same taps.
+func set_enabled(p_enabled: bool) -> void:
+	is_enabled = p_enabled
+	if not p_enabled and is_dragging:
+		_finish_drag()
+
 func _input(event: InputEvent) -> void:
-	if node_screen_positions.is_empty():
+	if not is_enabled or node_screen_positions.is_empty():
 		return
 
 	if event is InputEventMouseButton:

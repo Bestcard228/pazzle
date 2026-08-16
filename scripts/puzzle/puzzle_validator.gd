@@ -188,3 +188,59 @@ static func validate_not_last_turn_only(solution: PuzzleSolution, target: Vector
 			break
 
 	return early_drawn
+
+
+# --- ERASE mode -------------------------------------------------------------------
+
+# Every schedule the player could legally commit: the first four picks are a permutation
+# of the four zones, and from there the rule that a zone cannot return until the other
+# three have been used makes the rest forced. So the space is at most 4! = 24 walks
+# whatever the turn count, which is small enough to enumerate exactly.
+static func enumerate_legal_erase_orders(max_turns: int) -> Array:
+	var orders: Array = []
+	_extend_erase_orders([], max_turns, orders)
+	return orders
+
+static func _extend_erase_orders(picks: Array[int], max_turns: int, out: Array) -> void:
+	if picks.size() >= max_turns:
+		out.append(picks.duplicate())
+		return
+
+	for zone in EraserSystem.legal_zones_after(picks):
+		var next := picks.duplicate()
+		next.append(zone)
+		_extend_erase_orders(next, max_turns, out)
+
+# How many of those schedules leave exactly the target standing. A puzzle where every
+# schedule works is not a puzzle -- the choice would carry no information -- and one where
+# none does is unsolvable, so ERASE mode wants a count strictly between the two.
+static func count_solving_erase_orders(
+	solution: PuzzleSolution,
+	board_def: BoardDefinition,
+	target: VectorGeometry,
+	max_turns: int
+) -> int:
+	var solving := 0
+	for order in enumerate_legal_erase_orders(max_turns):
+		var typed_order: Array[int] = []
+		for zone in order:
+			typed_order.append(int(zone))
+		var scheduled := board_def.with_erasure_override(typed_order)
+		if PuzzleSimulator.simulate(solution, scheduled).is_equivalent_to(target):
+			solving += 1
+	return solving
+
+# A puzzle is worth playing in ERASE mode when the schedule actually has to be worked out:
+# at least one order reaches the target, but not all of them do.
+static func validate_erase_choice_matters(
+	solution: PuzzleSolution,
+	board_def: BoardDefinition,
+	target: VectorGeometry,
+	max_turns: int
+) -> bool:
+	var total := enumerate_legal_erase_orders(max_turns).size()
+	if total <= 1:
+		return false
+
+	var solving := count_solving_erase_orders(solution, board_def, target, max_turns)
+	return solving >= 1 and solving < total

@@ -119,7 +119,37 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_medium_stages_are_progressive")
 
+	if test_every_erasure_cycle_generates_every_tier():
+		passed += 1
+		print("  [PASS] test_every_erasure_cycle_generates_every_tier")
+	else:
+		print("  [FAIL] test_every_erasure_cycle_generates_every_tier")
+
 	return passed
+
+# The erasure order is an ordering, not a tier: every difficulty must still generate a
+# puzzle whose reference solution replays to its own target, under every one of the six
+# walks. If any of this needed new sequences, it would fail here.
+static func test_every_erasure_cycle_generates_every_tier() -> bool:
+	for difficulty in PuzzleGenerator.DIFFICULTY_ORDER:
+		for cycle_id in range(EraserSystem.CYCLE_COUNT):
+			var board_def := BoardDefinition.new(8)
+			var puzzle := PuzzleGenerator.generate_puzzle(board_def, 0, 2, difficulty, 400, cycle_id)
+
+			if puzzle == null or puzzle.target_geometry == null or puzzle.target_geometry.is_empty():
+				return false
+			if puzzle.board_definition.erasure_cycle_id != cycle_id:
+				return false
+
+			var replay := PuzzleSimulator.simulate(puzzle.reference_solution, puzzle.board_definition)
+			if not replay.is_equivalent_to(puzzle.target_geometry):
+				return false
+
+			# The puzzle has to finish where it says it does, walking its own order
+			if EraserSystem.get_final_phase(puzzle.max_turns, puzzle.board_definition) != puzzle.final_erasure_zone:
+				return false
+
+	return true
 
 static func test_puzzle_generation() -> bool:
 	var board_def := BoardDefinition.new(8)
@@ -269,14 +299,19 @@ static func test_easy_board_is_fixed() -> bool:
 		if puzzle.max_turns < PuzzleGenerator.EASY_MIN_TURNS or puzzle.max_turns > PuzzleGenerator.EASY_MAX_TURNS:
 			return false
 
+		# EASY always opens on TOP, so the finishing zone is fixed by the sequence length
+		# once the walk is known -- the third step of a 3-turn puzzle, the fourth of a
+		# 4-turn one. Which region that is depends on the walk, so it is derived rather
+		# than hard-coded.
+		var order := EraserSystem.get_cycle(puzzle.board_definition.erasure_cycle_id)
+		if puzzle.final_erasure_zone != order[(puzzle.max_turns - 1) % EraserSystem.PHASE_COUNT]:
+			return false
+
 		zones[puzzle.final_erasure_zone] = true
 		lengths[puzzle.max_turns] = true
 
-	# Both branches of the tree, and the two zones they imply
+	# Both branches of the tree
 	if lengths.size() != 2: return false
-	if zones.size() != 2: return false
-	if not zones.has(EraserSystem.ErasureRegion.BOTTOM): return false
-	if not zones.has(EraserSystem.ErasureRegion.LEFT): return false
 
 	return true
 
@@ -451,7 +486,8 @@ static func test_easy_plus_rotates_opening() -> bool:
 		# Checking the relation is exact; sampling the openings is not, because they are
 		# derived as (zone - (turns - 1)) mod 4 and can collide across a small batch.
 		var opening := EraserSystem.get_phase_for_turn(0, puzzle.board_definition)
-		if opening != EraserSystem.start_phase_for_final(puzzle.final_erasure_zone, puzzle.max_turns):
+		if opening != EraserSystem.start_phase_for_final(puzzle.final_erasure_zone,
+				puzzle.max_turns, puzzle.board_definition.erasure_cycle_id):
 			return false
 
 		openings[opening] = true

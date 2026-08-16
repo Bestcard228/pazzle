@@ -52,6 +52,29 @@ const COMMIT_FLASH_TIME := 0.45
 var _commit_flash_nodes: Array[int] = []
 var _commit_flash_t: float = COMMIT_FLASH_TIME
 
+# Colour layers. Each layer keeps its own geometry and its own erasure walk, so the board
+# draws several sheets at once and warns about several quarters at once -- one per colour.
+var layer_count: int = 1
+var active_layer: int = 0
+var layer_geometry: Array[VectorGeometry] = []
+var layer_applied_phases: Array[int] = []
+var layer_upcoming_phases: Array[int] = []
+
+# The turn clock, drawn as a ring winding down round the field. It sits outside the board
+# so it never competes with the geometry, and it only appears when a limit is set.
+const COLOR_CLOCK := Color(0.55, 0.85, 1.00)
+const COLOR_CLOCK_URGENT := Color(1.00, 0.35, 0.30)
+var clock_fraction: float = -1.0
+var _clock_flash: float = 0.0
+
+# ERASE mode: the zone under the finger, the zones already spent, and the order they went
+# in. The board already knows how to draw a quarter -- this is which quarters, and why.
+const COLOR_ZONE_PICK := Color(1.00, 0.25, 0.30)
+var zone_picking_active: bool = false
+var hovered_zone: int = -1
+var hovered_zone_legal: bool = true
+var picked_zones: Array[int] = []
+
 # Hint ghost
 const COLOR_HINT := Color(1.00, 0.85, 0.35)
 const HINT_SHOW_TIME := 4.5
@@ -93,6 +116,9 @@ func _process(delta: float) -> void:
 	if _hint_t < HINT_SHOW_TIME:
 		_hint_t += delta
 		queue_redraw()
+	if _clock_flash > 0.0:
+		_clock_flash = maxf(0.0, _clock_flash - delta * 1.8)
+		queue_redraw()
 
 	# Update smooth drawing animation. Only the newest segment draws itself in; every
 	# segment already linked stays solid, so the animation never hides committed geometry.
@@ -123,8 +149,10 @@ func _process(delta: float) -> void:
 		draw_progress = max(draw_progress_target, draw_progress - step)
 		queue_redraw()
 
-	# Only animate when there is something to warn about (existing erasure warnings)
-	if upcoming_erasure_phase < 0 and not is_cleared:
+	# Only animate when there is something to warn about (existing erasure warnings), or
+	# while a zone is being hovered in ERASE mode
+	if (upcoming_erasure_phase < 0 and not is_cleared and hovered_zone < 0
+			and not _uses_layers() and clock_fraction < 0.0):
 		return
 	_pulse_t += delta
 	queue_redraw()
@@ -154,6 +182,180 @@ func set_cleared(p_cleared: bool) -> void:
 func set_active_swipe(nodes: Array[int]) -> void:
 	self.active_swipe_nodes = nodes.duplicate()
 	queue_redraw()
+
+# --- Colour layers -------------------------------------------------------------------
+
+# --- Turn clock ----------------------------------------------------------------------
+
+# `fraction` is how much of the turn is left, 1 down to 0. A negative value means there is
+# no clock on this puzzle and nothing is drawn.
+func set_clock_fraction(fraction: float) -> void:
+	clock_fraction = fraction
+	queue_redraw()
+
+# The moment a turn runs out, so the loss registers as an event rather than the ring
+# quietly reaching zero.
+func flash_clock_expiry() -> void:
+	_clock_flash = 1.0
+	queue_redraw()
+
+func _draw_clock() -> void:
+	if clock_fraction < 0.0 and _clock_flash <= 0.0:
+		return
+
+	var radius := board_radius_screen * 1.42
+	var urgent := clock_fraction >= 0.0 and clock_fraction < 0.25
+	var pulse := 0.5 + 0.5 * sin(_pulse_t * (9.0 if urgent else 3.0))
+
+	# The track it winds down along
+	draw_arc(board_center_screen, radius, 0, TAU, 64, Color(COLOR_CLOCK.r, COLOR_CLOCK.g, COLOR_CLOCK.b, 0.12), 3.0)
+
+	if clock_fraction >= 0.0:
+		var ink := COLOR_CLOCK_URGENT if urgent else COLOR_CLOCK
+		var sweep: float = TAU * clamp(clock_fraction, 0.0, 1.0)
+		var start := -PI * 0.5
+		var width: float = lerpf(4.0, 7.0, pulse) if urgent else 4.0
+		draw_arc(board_center_screen, radius, start, start + sweep, 64,
+			Color(ink.r, ink.g, ink.b, 0.55 + 0.35 * pulse), width)
+
+		# A head running round the ring, so the movement is visible even when the arc is
+		# barely changing length
+		var head_angle := start + sweep
+		var head := board_center_screen + Vector2(cos(head_angle), sin(head_angle)) * radius
+		draw_circle(head, lerpf(4.0, 7.0, pulse) if urgent else 4.5, Color(ink.r, ink.g, ink.b, 0.95))
+
+	# The expiry flash: a ring thrown outward as the turn is lost
+	if _clock_flash > 0.0:
+		var t := 1.0 - _clock_flash
+		draw_arc(board_center_screen, radius * (1.0 + t * 0.25), 0, TAU, 64,
+			Color(COLOR_CLOCK_URGENT.r, COLOR_CLOCK_URGENT.g, COLOR_CLOCK_URGENT.b, _clock_flash * 0.8),
+			lerpf(6.0, 1.0, t))
+
+func set_layer_count(p_count: int) -> void:
+	layer_count = maxi(1, p_count)
+	if layer_count <= 1:
+		layer_geometry.clear()
+		layer_applied_phases.clear()
+		layer_upcoming_phases.clear()
+	queue_redraw()
+
+func set_active_layer(p_layer: int) -> void:
+	active_layer = p_layer
+	queue_redraw()
+
+func set_layer_geometry(geometry: Array[VectorGeometry]) -> void:
+	layer_geometry = geometry.duplicate()
+	queue_redraw()
+
+func set_layer_erasure_phases(applied: Array[int], upcoming: Array[int]) -> void:
+	layer_applied_phases = applied.duplicate()
+	layer_upcoming_phases = upcoming.duplicate()
+	# The dead-zone and warning overlays are per layer now, so the single-layer ones step
+	# aside rather than drawing a fifth quarter nobody asked for.
+	applied_erasure_phase = -1
+	upcoming_erasure_phase = -1
+	queue_redraw()
+
+func ink_for_active_layer() -> Color:
+	return LayerSystem.get_layer_color(active_layer, layer_count)
+
+func _uses_layers() -> bool:
+	return layer_count > 1
+
+# --- ERASE mode ---------------------------------------------------------------------
+
+func set_zone_picking(active: bool) -> void:
+	zone_picking_active = active
+	if not active:
+		hovered_zone = -1
+		picked_zones.clear()
+	queue_redraw()
+
+func set_picked_zones(zones: Array[int]) -> void:
+	picked_zones = zones.duplicate()
+	queue_redraw()
+
+func set_hovered_zone(zone: int, legal: bool) -> void:
+	if hovered_zone == zone and hovered_zone_legal == legal:
+		return
+	hovered_zone = zone
+	hovered_zone_legal = legal
+	queue_redraw()
+
+# Which quarter a screen point falls in, or -1 if it is off the field entirely. The wedge
+# eraser cuts along the diagonals and the half-plane along the axes, so the answer depends
+# on the board's own eraser shape rather than on a fixed quadrant test.
+func zone_at_position(pos: Vector2) -> int:
+	var offset := pos - board_center_screen
+	if offset.length() > board_radius_screen * 1.35:
+		return -1
+	if offset.length() < 1.0:
+		return -1
+
+	if _is_wedge_mode():
+		# Rotating by a quarter-turn puts the wedge boundaries on the axes, so the
+		# dominant component names the wedge.
+		var turned := offset.rotated(PI / 4.0)
+		if absf(turned.x) > absf(turned.y):
+			return EraserSystem.ErasureRegion.RIGHT if turned.x > 0.0 else EraserSystem.ErasureRegion.LEFT
+		return EraserSystem.ErasureRegion.BOTTOM if turned.y > 0.0 else EraserSystem.ErasureRegion.TOP
+
+	if absf(offset.x) > absf(offset.y):
+		return EraserSystem.ErasureRegion.RIGHT if offset.x > 0.0 else EraserSystem.ErasureRegion.LEFT
+	return EraserSystem.ErasureRegion.BOTTOM if offset.y > 0.0 else EraserSystem.ErasureRegion.TOP
+
+func _draw_zone_picking() -> void:
+	if not zone_picking_active:
+		return
+
+	# The quarters still on the table, outlined faintly so the field reads as four choices
+	for zone in range(EraserSystem.PHASE_COUNT):
+		if picked_zones.has(zone):
+			continue
+		var dir := _phase_direction(zone)
+		var reach := board_radius_screen * 1.28
+		draw_line(board_center_screen + dir * (reach * 0.25), board_center_screen + dir * reach,
+			Color(COLOR_DIVIDER.r, COLOR_DIVIDER.g, COLOR_DIVIDER.b, 0.35), 1.5)
+
+	# Spent quarters keep a number, so the order the player committed stays readable
+	for i in range(picked_zones.size()):
+		var zone: int = picked_zones[i]
+		var dir := _phase_direction(zone)
+		var at := board_center_screen + dir * (board_radius_screen * 0.72)
+		draw_circle(at, 11.0, Color(COLOR_ZONE_PICK.r, COLOR_ZONE_PICK.g, COLOR_ZONE_PICK.b, 0.30))
+		draw_arc(at, 11.0, 0, TAU, 20, Color(COLOR_ZONE_PICK.r, COLOR_ZONE_PICK.g, COLOR_ZONE_PICK.b, 0.85), 2.0)
+		# The pick number as pips round the marker: no font needed and it scales cleanly
+		for pip in range(i + 1):
+			var angle := -PI * 0.5 + TAU * (float(pip) / float(maxi(1, i + 1)))
+			draw_circle(at + Vector2(cos(angle), sin(angle)) * 6.0, 1.8, COLOR_ZONE_PICK)
+
+	if hovered_zone < 0:
+		return
+
+	# The hover preview: red for a quarter that can be taken, dimmed and struck through
+	# for one that is still cooling down.
+	var pulse := 0.5 + 0.5 * sin(_pulse_t * 4.0)
+	var alpha: float = lerpf(0.16, 0.30, pulse) if hovered_zone_legal else 0.08
+	var ink := COLOR_ZONE_PICK if hovered_zone_legal else COLOR_DIVIDER
+
+	draw_colored_polygon(_phase_polygon(hovered_zone), Color(ink.r, ink.g, ink.b, alpha))
+
+	var hover_dir := _phase_direction(hovered_zone)
+	var hover_reach := board_radius_screen * 1.28
+	if _is_wedge_mode():
+		draw_line(board_center_screen, board_center_screen + hover_dir.rotated(-PI / 4.0) * hover_reach,
+			Color(ink.r, ink.g, ink.b, 0.9), 3.0)
+		draw_line(board_center_screen, board_center_screen + hover_dir.rotated(PI / 4.0) * hover_reach,
+			Color(ink.r, ink.g, ink.b, 0.9), 3.0)
+	else:
+		var axis := Vector2(hover_dir.y, hover_dir.x).abs()
+		draw_line(board_center_screen - axis * hover_reach, board_center_screen + axis * hover_reach,
+			Color(ink.r, ink.g, ink.b, 0.9), 3.0)
+
+	if not hovered_zone_legal:
+		var bar := board_center_screen + hover_dir * (board_radius_screen * 0.72)
+		draw_line(bar + Vector2(-10, -10), bar + Vector2(10, 10), COLOR_ZONE_PICK, 2.5)
+		draw_line(bar + Vector2(-10, 10), bar + Vector2(10, -10), COLOR_ZONE_PICK, 2.5)
 
 # A closed shape has no loose end, so the rubber band to the finger is dropped.
 func set_loop_closed(closed: bool) -> void:
@@ -296,12 +498,17 @@ func _draw() -> void:
 	_draw_board_face()
 	_draw_division_lines()
 	_draw_dead_zone()
+	_draw_layer_dead_zones()
 	_draw_upcoming_erasure()
+	_draw_layer_warnings()
+	_draw_zone_picking()
 	_draw_node_ring()
 	_draw_surviving_geometry()
+	_draw_layer_geometry()
 	_draw_hint_path()
 	_draw_active_swipe()
 	_draw_commit_flash()
+	_draw_clock()
 	_draw_cleared_glow()
 
 # The shape the player just committed, echoed as an expanding bright ghost. The turn is
@@ -480,7 +687,8 @@ func _draw_node_ring() -> void:
 		var is_selected := active_swipe_nodes.has(i)
 
 		# Base node color and size
-		var node_color := COLOR_NODE_ACTIVE if is_selected else COLOR_NODE
+		var selected_ink := ink_for_active_layer() if _uses_layers() else COLOR_NODE_ACTIVE
+		var node_color := selected_ink if is_selected else COLOR_NODE
 		var node_size := 18.0
 
 		# Apply press animation if active
@@ -501,7 +709,7 @@ func _draw_node_ring() -> void:
 		draw_circle(pos, node_size, node_color)
 		draw_circle(pos, node_size * 0.78, COLOR_BOARD_FILL)  # Inner circle size scales with outer
 		if is_selected:
-			draw_circle(pos, node_size * 0.44, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.8))
+			draw_circle(pos, node_size * 0.44, Color(selected_ink.r, selected_ink.g, selected_ink.b, 0.8))
 
 func _draw_surviving_geometry() -> void:
 	if current_surviving_geometry == null or current_surviving_geometry.is_empty():
@@ -513,11 +721,83 @@ func _draw_surviving_geometry() -> void:
 		draw_line(s1, s2, Color(1.0, 0.85, 0.3, 0.35), 8.0)
 		draw_line(s1, s2, COLOR_INK, 4.0)
 
+# What each colour has already lost, tinted so the quarter reads as "gone from red" rather
+# than "gone from the board".
+func _draw_layer_dead_zones() -> void:
+	if not _uses_layers():
+		return
+	for layer in range(layer_applied_phases.size()):
+		var phase: int = layer_applied_phases[layer]
+		if phase < 0:
+			continue
+		var ink := LayerSystem.get_layer_color(layer, layer_count)
+		draw_colored_polygon(_phase_polygon(phase), Color(ink.r * 0.25, ink.g * 0.25, ink.b * 0.25, 0.30))
+
+# One warning per colour. This is the whole mechanic on screen: the blade takes a
+# different quarter from each layer on the same turn.
+func _draw_layer_warnings() -> void:
+	if not _uses_layers():
+		return
+
+	var pulse := 0.5 + 0.5 * sin(_pulse_t * 3.0)
+
+	for layer in range(layer_upcoming_phases.size()):
+		var phase: int = layer_upcoming_phases[layer]
+		if phase < 0:
+			continue
+
+		var ink := LayerSystem.get_layer_color(layer, layer_count)
+		var dir := _phase_direction(phase)
+		var reach := board_radius_screen * 1.28
+
+		draw_colored_polygon(_phase_polygon(phase),
+			Color(ink.r, ink.g, ink.b, lerpf(0.07, 0.16, pulse)))
+
+		# Teeth fanning across the doomed slice, in that colour, plus its two arms
+		if _is_wedge_mode():
+			var arm_a := dir.rotated(-PI / 4.0)
+			var arm_b := dir.rotated(PI / 4.0)
+			for i in range(1, 6):
+				var ray := arm_a.rotated((PI / 2.0) * (float(i) / 6.0))
+				draw_line(board_center_screen, board_center_screen + ray * reach,
+					Color(ink.r, ink.g, ink.b, 0.22), 2.0)
+			draw_line(board_center_screen, board_center_screen + arm_a * reach, Color(ink.r, ink.g, ink.b, 0.8), 2.5)
+			draw_line(board_center_screen, board_center_screen + arm_b * reach, Color(ink.r, ink.g, ink.b, 0.8), 2.5)
+		else:
+			var axis := Vector2(dir.y, dir.x).abs()
+			draw_line(board_center_screen - axis * reach, board_center_screen + axis * reach,
+				Color(ink.r, ink.g, ink.b, 0.8), 2.5)
+
+		# A pip out on the rim in that colour, so several warnings stay tellable apart
+		var pip := board_center_screen + dir * (board_radius_screen * 1.18)
+		draw_circle(pip, lerpf(4.0, 7.0, pulse), Color(ink.r, ink.g, ink.b, 0.9))
+
+func _draw_layer_geometry() -> void:
+	if not _uses_layers():
+		return
+
+	for layer in range(layer_geometry.size()):
+		var geom: VectorGeometry = layer_geometry[layer]
+		if geom == null or geom.is_empty():
+			continue
+
+		var ink := LayerSystem.get_layer_color(layer, layer_count)
+		var is_active := layer == active_layer
+		for seg in geom.segments:
+			var s1 := grid_to_screen(seg.p1)
+			var s2 := grid_to_screen(seg.p2)
+			draw_line(s1, s2, Color(ink.r, ink.g, ink.b, 0.30), 8.0)
+			draw_line(s1, s2, Color(ink.r, ink.g, ink.b, 1.0 if is_active else 0.75), 4.0)
+
 func _draw_active_swipe() -> void:
+	# The swipe is drawn in the colour it will land in, so "which colour am I painting"
+	# never has to be read off a label.
+	var swipe_ink := ink_for_active_layer() if _uses_layers() else COLOR_NODE_ACTIVE
+
 	# Draw preview line and guidance line - these can work with just one node
 	if is_preview_active and not _is_loop_closed and active_swipe_nodes.size() > 0 and preview_position != Vector2.ZERO:
 		var last_confirmed_pos := node_screen_positions[active_swipe_nodes.back()]
-		draw_line(last_confirmed_pos, preview_position, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.6), 3.0)
+		draw_line(last_confirmed_pos, preview_position, Color(swipe_ink.r, swipe_ink.g, swipe_ink.b, 0.6), 3.0)
 
 	if hover_guidance_id >= 0 and active_swipe_nodes.size() > 0:
 		var last_active_pos := node_screen_positions[active_swipe_nodes.back()]
@@ -550,14 +830,14 @@ func _draw_active_swipe() -> void:
 	for i in range(full_segments_to_draw):
 		var p1 := node_screen_positions[active_swipe_nodes[i]]
 		var p2 := node_screen_positions[active_swipe_nodes[i + 1]]
-		draw_line(p1, p2, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.9), 4.0)
+		draw_line(p1, p2, Color(swipe_ink.r, swipe_ink.g, swipe_ink.b, 0.9), 4.0)
 
 	# Draw partial segment if there's progress in the current segment
 	if full_segments_to_draw < total_segments and partial_segment_progress > 0.0:
 		var p1 := node_screen_positions[active_swipe_nodes[full_segments_to_draw]]
 		var p2 := node_screen_positions[active_swipe_nodes[full_segments_to_draw + 1]]
 		var interim_pos = p1.lerp(p2, partial_segment_progress)
-		draw_line(p1, interim_pos, Color(COLOR_NODE_ACTIVE.r, COLOR_NODE_ACTIVE.g, COLOR_NODE_ACTIVE.b, 0.9), 4.0)
+		draw_line(p1, interim_pos, Color(swipe_ink.r, swipe_ink.g, swipe_ink.b, 0.9), 4.0)
 
 func _draw_cleared_glow() -> void:
 	if not is_cleared:

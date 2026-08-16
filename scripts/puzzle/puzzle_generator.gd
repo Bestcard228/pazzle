@@ -1,6 +1,18 @@
 class_name PuzzleGenerator
 extends RefCounted
 
+# Which of the six erasure walks a puzzle uses. This is an ordering of the existing
+# rules, not a new tier: every walk still clears the field in four steps, so the six EASY
+# sequences and the MEDIUM chain are unchanged by it. SHUFFLED_ERASURE_CYCLE draws one
+# per puzzle from a bag, so all six appear before any repeats.
+# Seconds per turn. Offered at every tier and in both input modes, because running out of
+# time is just a skip and every tier already knows what a skip is.
+const TURN_TIME_CHOICES: Array[float] = [0.0, 12.0, 6.0, 4.0]
+const NO_TURN_TIME_LIMIT := 0.0
+
+const SHUFFLED_ERASURE_CYCLE := -1
+const DEFAULT_ERASURE_CYCLE := SHUFFLED_ERASURE_CYCLE
+
 const DEFAULT_MIN_TURNS := 4
 const DEFAULT_MAX_TURNS := 7
 
@@ -249,9 +261,13 @@ static func generate_puzzle(
 	max_turns: int = 0,
 	required_shape_count: int = 2,
 	difficulty: int = Difficulty.NORMAL,
-	max_attempts: int = 400
+	max_attempts: int = 400,
+	erasure_cycle_id: int = DEFAULT_ERASURE_CYCLE,
+	input_mode: int = PuzzleData.InputMode.DRAW_SHAPES,
+	turn_time_limit: float = NO_TURN_TIME_LIMIT
 ) -> PuzzleData:
 	var is_easy_mode := uses_sequence_tree(difficulty)
+	var is_erase_mode := input_mode == PuzzleData.InputMode.CHOOSE_ERASURES
 	if board_def == null:
 		board_def = BoardDefinition.new(8)
 
@@ -264,6 +280,13 @@ static func generate_puzzle(
 		max_turns = clampi(max_turns, 3, DEFAULT_MAX_TURNS)
 
 	var puzzle_board := board_def.duplicate_board()
+	# The generated puzzle owns its cycle, so the caller only has to say it once here
+	# rather than keeping a board in sync as well.
+	# EASY forces the wedge below, so the walk is resolved against the shape the board
+	# will actually be erased with.
+	var eraser_shape: int = (EraserSystem.ErasureShape.DIAGONAL_WEDGE if is_easy_mode
+		else puzzle_board.erasure_shape)
+	puzzle_board.erasure_cycle_id = _resolve_erasure_cycle(erasure_cycle_id, eraser_shape)
 	var final_zone: int
 	var easy_sequence: Array[int] = []
 
@@ -294,7 +317,8 @@ static func generate_puzzle(
 			final_zone = _take_next_final_zone(rng)
 			puzzle_board.erasure_start_phase = EraserSystem.start_phase_for_final(
 				final_zone,
-				max_turns
+				max_turns,
+				puzzle_board.erasure_cycle_id
 			)
 	else:
 		if not turns_were_requested:
@@ -304,7 +328,8 @@ static func generate_puzzle(
 		final_zone = _take_next_final_zone(rng)
 		puzzle_board.erasure_start_phase = EraserSystem.start_phase_for_final(
 			final_zone,
-			max_turns
+			max_turns,
+			puzzle_board.erasure_cycle_id
 		)
 
 	var candidates := generate_candidate_pool(puzzle_board, difficulty)
@@ -313,7 +338,8 @@ static func generate_puzzle(
 			puzzle_board,
 			max_turns,
 			final_zone,
-			difficulty
+			difficulty,
+			input_mode
 		)
 
 	var survivable_turns := PuzzleSimulator.get_survivable_turns(
@@ -326,7 +352,8 @@ static func generate_puzzle(
 			puzzle_board,
 			max_turns,
 			final_zone,
-			difficulty
+			difficulty,
+			input_mode
 		)
 
 	# The non-EASY generator asks for a fixed shape count. EASY takes its count from
@@ -473,6 +500,17 @@ static func generate_puzzle(
 		):
 			continue
 
+		# In ERASE mode the schedule is the thing being solved, so it has to be worth
+		# solving: some orders must reach the target and some must not.
+		if is_erase_mode:
+			if not PuzzleValidator.validate_erase_choice_matters(
+				sol,
+				puzzle_board,
+				target,
+				max_turns
+			):
+				continue
+
 		var p_data := _build_puzzle_data(
 			puzzle_board,
 			target,
@@ -481,6 +519,9 @@ static func generate_puzzle(
 			sol,
 			final_zone
 		)
+		p_data.input_mode = input_mode
+		p_data.turn_time_limit = turn_time_limit
+		p_data.erase_order = get_erase_order(puzzle_board, max_turns)
 
 		if is_multi_stage(difficulty):
 			# Each stage's target is what survives at its seam; the last one is the final
@@ -498,8 +539,18 @@ static func generate_puzzle(
 		puzzle_board,
 		max_turns,
 		final_zone,
-		difficulty
+		difficulty,
+		input_mode
 	)
+
+
+# The zone the board erases on each turn, spelled out. In DRAW mode this is a readout of
+# the cycle; in ERASE mode it is the schedule the player is trying to rediscover.
+static func get_erase_order(board_def: BoardDefinition, max_turns: int) -> Array[int]:
+	var order: Array[int] = []
+	for turn in range(max_turns):
+		order.append(EraserSystem.get_phase_for_turn(turn, board_def))
+	return order
 
 
 # The turns an EASY sequence draws on.
@@ -515,6 +566,40 @@ static func _get_easy_draw_turns(sequence: Array) -> Array[int]:
 
 # Draws the next final zone from a shuffled bag so all four zones are used before
 # repeats, and the same zone never lands twice in a row.
+# Bag over the walks, so a run of puzzles sees all of them before any repeats. Only walks
+# that survive the board's eraser shape go in: under the half-plane the non-rotational
+# ones clear the field in two turns, which would leave nothing for the sequences to work
+# with. A walk asked for by name is honoured the same way -- corrected rather than used to
+# generate puzzles that cannot hold together.
+static var _cycle_bag: Array[int] = []
+
+static func _resolve_erasure_cycle(requested: int, shape: int) -> int:
+	if requested != SHUFFLED_ERASURE_CYCLE:
+		var wanted := posmod(requested, EraserSystem.CYCLE_COUNT)
+		if EraserSystem.is_cycle_usable(wanted, shape):
+			return wanted
+	return _take_next_erasure_cycle(shape)
+
+static func _take_next_erasure_cycle(shape: int) -> int:
+	var usable := EraserSystem.get_usable_cycles(shape)
+	if usable.is_empty():
+		return EraserSystem.CYCLE_CLOCKWISE
+
+	# Drop anything the bag is holding that this shape cannot use
+	var next_bag: Array[int] = []
+	for cycle_id in _cycle_bag:
+		if usable.has(cycle_id):
+			next_bag.append(cycle_id)
+	_cycle_bag = next_bag
+
+	if _cycle_bag.is_empty():
+		_cycle_bag = usable.duplicate()
+		_cycle_bag.shuffle()
+	return _cycle_bag.pop_back()
+
+static func reset_erasure_cycle_rotation() -> void:
+	_cycle_bag.clear()
+
 static func _take_next_final_zone(rng: RandomNumberGenerator) -> int:
 	if _zone_bag.is_empty():
 		_zone_bag = [
@@ -723,7 +808,8 @@ static func _create_fallback_puzzle(
 	board_def: BoardDefinition,
 	max_turns: int,
 	final_zone: int,
-	difficulty: int = Difficulty.NORMAL
+	difficulty: int = Difficulty.NORMAL,
+	input_mode: int = PuzzleData.InputMode.DRAW_SHAPES
 ) -> PuzzleData:
 	var sol := PuzzleSolution.new(max_turns)
 	var candidates := generate_candidate_pool(
@@ -768,7 +854,7 @@ static func _create_fallback_puzzle(
 		board_def
 	)
 
-	return _build_puzzle_data(
+	var p_data := _build_puzzle_data(
 		board_def,
 		target,
 		max_turns,
@@ -776,3 +862,261 @@ static func _create_fallback_puzzle(
 		sol,
 		final_zone
 	)
+	p_data.input_mode = input_mode
+	p_data.erase_order = get_erase_order(board_def, max_turns)
+	return p_data
+
+
+# --- Layered puzzles ----------------------------------------------------------------
+
+# The layered mod: one sequence, several colours.
+#
+# The D/S sequence is shared -- every layer draws on the same turns and skips on the same
+# turns, which is what the notation D(r) D(g) / S(r) S(g) says. What differs per layer is
+# the walk the blade takes through the quarters, so each colour is eaten in a different
+# order and a shape that survives in red may not survive in green.
+#
+# Because each layer is erased once per turn by its own walk, a layer IS an ordinary
+# single-layer puzzle. So this generates one per colour with the existing pool and the
+# existing validators, and only then asks the cross-layer question: are these actually
+# different puzzles, or the same one drawn twice?
+static func generate_layered_puzzle(
+	board_def: BoardDefinition = null,
+	difficulty: int = Difficulty.EASY,
+	layer_count: int = 2,
+	max_attempts: int = 200,
+	input_mode: int = PuzzleData.InputMode.DRAW_SHAPES,
+	turn_time_limit: float = NO_TURN_TIME_LIMIT
+) -> PuzzleData:
+	if board_def == null:
+		board_def = BoardDefinition.new(8)
+
+	var layers := LayerSystem.clamp_layer_count(layer_count)
+	if layers <= LayerSystem.SINGLE_LAYER or not uses_sequence_tree(difficulty):
+		return generate_puzzle(board_def, 0, 2, difficulty, 400, DEFAULT_ERASURE_CYCLE,
+			input_mode, turn_time_limit)
+
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+
+	# The wedge is forced for the same reason it is in the single-layer tiers: it is the
+	# only eraser under which all six sequences hold together.
+	var base_board := board_def.duplicate_board()
+	base_board.erasure_shape = EraserSystem.ErasureShape.DIAGONAL_WEDGE
+
+	for attempt in range(max_attempts):
+		var sequence := _take_next_sequence(difficulty)
+		var max_turns := sequence.size()
+		var draw_turns := _get_easy_draw_turns(sequence)
+		if draw_turns.is_empty():
+			continue
+
+		var cycles := LayerSystem.assign_layer_cycles(layers, base_board.erasure_shape, rng)
+		var starts := LayerSystem.assign_layer_start_phases(layers, rng)
+
+		var boards: Array[BoardDefinition] = []
+		for layer in range(layers):
+			var layer_board := base_board.duplicate_board()
+			layer_board.erasure_cycle_id = cycles[layer]
+			layer_board.erasure_start_phase = starts[layer]
+			boards.append(layer_board)
+
+		# Shapes are chosen turn by turn ACROSS the layers, not layer by layer, so that a
+		# turn never paints the same shape twice in two colours. D(r) D(g) is two
+		# different shapes going down on the same turn -- if they were the same one, the
+		# turn would just be one shape drawn in two inks and the colours would carry no
+		# information.
+		var pools: Array = []
+		var layered := LayeredSolution.new(layers, max_turns)
+		var layers_ok := true
+
+		for layer in range(layers):
+			var pool := generate_candidate_pool(boards[layer], difficulty)
+			if pool.size() < layers:
+				# Not enough distinct shapes to give every colour its own on a turn
+				layers_ok = false
+				break
+			pools.append(pool)
+
+		if not layers_ok:
+			continue
+
+		for turn in draw_turns:
+			var chosen: Array[ShapeInstance] = []
+			for layer in range(layers):
+				var shape := _pick_distinct_shape(pools[layer], chosen, rng)
+				if shape == null:
+					layers_ok = false
+					break
+				chosen.append(shape)
+				layered.set_action(turn, layer, shape)
+			if not layers_ok:
+				break
+
+		if not layers_ok:
+			continue
+
+		var targets: Array[VectorGeometry] = []
+
+		for layer in range(layers):
+			var layer_board := boards[layer]
+			var layer_solution := layered.get_layer(layer)
+			var layer_target := PuzzleSimulator.simulate(layer_solution, layer_board)
+
+			# Every colour has to be worth drawing: it must leave something, and every
+			# shape in it must matter, judged exactly as a single-layer puzzle would be.
+			if layer_target.is_empty() or layer_target.segments.size() < 2:
+				layers_ok = false
+				break
+			if not _validate_layer(layer_solution, layer_board, layer_target, sequence, difficulty):
+				layers_ok = false
+				break
+
+			targets.append(layer_target)
+
+		if not layers_ok:
+			continue
+
+		if not _layers_are_distinct(boards, targets):
+			continue
+
+		var layered_data := _build_layered_puzzle_data(
+			base_board, boards, layered, targets, sequence, max_turns, difficulty, input_mode)
+		layered_data.turn_time_limit = turn_time_limit
+		return layered_data
+
+	# Nothing held together in the attempts allowed: fall back to the single-layer game
+	# rather than handing back a layered puzzle that does not stand up.
+	return generate_puzzle(board_def, 0, 2, difficulty, 400, DEFAULT_ERASURE_CYCLE,
+		input_mode, turn_time_limit)
+
+
+# A shape for this turn that none of the colours already painted on it is using. Compared
+# by geometry rather than by path, so the same lines walked in a different order still
+# count as the same shape.
+static func _pick_distinct_shape(
+	pool: Array[ShapeInstance],
+	already_chosen: Array[ShapeInstance],
+	rng: RandomNumberGenerator
+) -> ShapeInstance:
+	if pool.is_empty():
+		return null
+
+	# Random draws first, so the shapes stay varied rather than always the pool's order
+	for attempt in range(12):
+		var candidate: ShapeInstance = pool[rng.randi() % pool.size()]
+		if not _shape_matches_any(candidate, already_chosen):
+			return candidate
+
+	# Then an exhaustive sweep, so a crowded turn fails only when it genuinely has to
+	for candidate in pool:
+		if not _shape_matches_any(candidate, already_chosen):
+			return candidate
+
+	return null
+
+
+static func _shape_matches_any(shape: ShapeInstance, others: Array[ShapeInstance]) -> bool:
+	for other in others:
+		if other == null or other.geometry == null or shape.geometry == null:
+			continue
+		if shape.geometry.is_equivalent_to(other.geometry):
+			return true
+	return false
+
+
+# A layer is judged by the same rules as a whole puzzle, because that is what it is.
+static func _validate_layer(
+	solution: PuzzleSolution,
+	board: BoardDefinition,
+	target: VectorGeometry,
+	sequence: Array[int],
+	difficulty: int
+) -> bool:
+	if is_multi_stage(difficulty):
+		var boundaries := get_stage_boundary_turns(sequence)
+		if boundaries.is_empty():
+			return false
+
+		var previous_state: VectorGeometry = null
+		var from_turn := 0
+		for boundary in boundaries:
+			if not PuzzleValidator.validate_stage_contributions(solution, board, from_turn, boundary):
+				return false
+			var stage_state := PuzzleSimulator.simulate_up_to_turn(solution, board, boundary)
+			if stage_state.segments.size() < 2:
+				return false
+			if previous_state != null and stage_state.is_equivalent_to(previous_state):
+				return false
+			previous_state = stage_state
+			from_turn = boundary + 1
+		return true
+
+	return PuzzleValidator.validate_necessary_contributions(solution, target, board)
+
+
+# Two colours that are erased the same way and end up looking the same are one puzzle
+# drawn twice. The layers have to differ in how they are eaten, and in what is left.
+static func _layers_are_distinct(boards: Array[BoardDefinition], targets: Array[VectorGeometry]) -> bool:
+	for i in range(boards.size()):
+		for j in range(i + 1, boards.size()):
+			var same_walk := (boards[i].erasure_cycle_id == boards[j].erasure_cycle_id
+				and boards[i].erasure_start_phase == boards[j].erasure_start_phase)
+			if same_walk:
+				return false
+			if targets[i].is_equivalent_to(targets[j]):
+				return false
+	return true
+
+
+static func _build_layered_puzzle_data(
+	base_board: BoardDefinition,
+	boards: Array[BoardDefinition],
+	layered: LayeredSolution,
+	targets: Array[VectorGeometry],
+	sequence: Array[int],
+	max_turns: int,
+	difficulty: int,
+	input_mode: int
+) -> PuzzleData:
+	# Layer 0 also fills the single-layer fields, so everything that only knows about one
+	# board -- the board rendering, the timeline, the erase-mode controller -- still has a
+	# coherent puzzle to read.
+	var merged := PuzzleSimulator.merge_layers(targets)
+	var p_data := _build_puzzle_data(
+		boards[0],
+		targets[0],
+		max_turns,
+		layered.get_non_empty_action_count(),
+		layered.get_layer(0),
+		EraserSystem.get_final_phase(max_turns, boards[0])
+	)
+
+	p_data.layer_count = boards.size()
+	p_data.layer_boards = boards
+	p_data.layer_targets = targets
+	p_data.layered_solution = layered
+	p_data.input_mode = input_mode
+	p_data.erase_order = get_erase_order(boards[0], max_turns)
+
+	# The merged picture is what the board shows, so it is the one the win reads against
+	# for anything that is not layer-aware.
+	p_data.difficulty_rating = float(layered.get_non_empty_action_count() * 1.5 + max_turns * 0.8)
+
+	if is_multi_stage(difficulty):
+		p_data.stage_boundary_turns = get_stage_boundary_turns(sequence)
+		var stage_targets: Array[VectorGeometry] = []
+		var layer_stage_targets: Array = []
+
+		for boundary in p_data.stage_boundary_turns:
+			var per_layer := PuzzleSimulator.simulate_layers_up_to_turn(layered, boards, boundary)
+			layer_stage_targets.append(per_layer)
+			stage_targets.append(PuzzleSimulator.merge_layers(per_layer))
+
+		p_data.stage_targets = stage_targets
+		p_data.layer_stage_targets = layer_stage_targets
+
+	# The single-layer target field carries the merged picture, which is what the goal
+	# card draws; the per-layer goals live in layer_targets and are what the win checks.
+	p_data.target_geometry = merged
+	return p_data

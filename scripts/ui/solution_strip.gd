@@ -18,9 +18,22 @@ const COLOR_INK := Color(0.95, 0.75, 0.20)
 const COLOR_SKIP := Color(0.55, 0.60, 0.72, 0.7)
 const COLOR_ORDER := Color(0.95, 0.75, 0.20)
 
+const COLOR_ZONE := Color(1.00, 0.25, 0.30)
+const COLOR_ZONE_FIELD := Color(0.45, 0.52, 0.66, 0.5)
+
 var board_def: BoardDefinition
 var solution: PuzzleSolution
 var is_revealed: bool = false
+
+# ERASE mode: the quarter wiped at the end of each turn. This is the answer in that mode,
+# so it is only ever filled in when the player asks to see it -- the shapes above it are
+# the given half and are always on show.
+var erase_order: Array[int] = []
+
+# Layered puzzles paint a different shape per colour on the same turn, so a cell has to
+# show all of them, each in its own ink -- one shape would be a lie about the plan.
+var layered_solution: LayeredSolution
+var layer_count: int = 1
 
 func set_solution(p_solution: PuzzleSolution, p_board_def: BoardDefinition) -> void:
 	self.solution = p_solution
@@ -29,6 +42,18 @@ func set_solution(p_solution: PuzzleSolution, p_board_def: BoardDefinition) -> v
 
 func set_revealed(p_revealed: bool) -> void:
 	self.is_revealed = p_revealed
+	queue_redraw()
+
+func set_layered_solution(p_layered: LayeredSolution, p_layer_count: int) -> void:
+	self.layered_solution = p_layered
+	self.layer_count = p_layer_count
+	queue_redraw()
+
+func _uses_layers() -> bool:
+	return layer_count > 1 and layered_solution != null
+
+func set_erase_order(p_order: Array[int]) -> void:
+	self.erase_order = p_order.duplicate()
 	queue_redraw()
 
 func _draw() -> void:
@@ -52,17 +77,27 @@ func _draw() -> void:
 
 	for t in range(turns):
 		var rect := Rect2(x0 + t * (cell_w + gap), y0, cell_w, cell_h)
-		var action := solution.get_action(t)
-		var shape: ShapeInstance = action.shape_instance if action != null else null
+		var draws := false
+		var shape: ShapeInstance = null
 
-		if shape != null:
+		if _uses_layers():
+			draws = layered_solution.is_draw_turn(t)
+		else:
+			var action := solution.get_action(t)
+			shape = action.shape_instance if action != null else null
+			draws = shape != null
+
+		if draws:
 			order += 1
 
-		_draw_cell(rect, shape, order if shape != null else 0)
+		_draw_cell(rect, shape, order if draws else 0, t)
 
-func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int) -> void:
+func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int, turn: int) -> void:
 	draw_rect(rect, COLOR_CELL_BG)
 	draw_rect(rect, COLOR_CELL_BORDER, false, 1.0)
+
+	if turn >= 0 and turn < erase_order.size():
+		_draw_zone_badge(rect, erase_order[turn])
 
 	var pad := rect.size.x * 0.14
 	var face := Rect2(
@@ -74,6 +109,15 @@ func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int) -> void:
 	var center := face.position + face.size * 0.5
 	var scale_factor := (face.size.x * 0.5) / board_def.radius
 
+	if _uses_layers():
+		if not layered_solution.is_draw_turn(turn):
+			_draw_skip(center, board_def.radius * scale_factor)
+			return
+		_draw_layered_field(center, scale_factor, turn)
+		_draw_layered_shapes(center, scale_factor, turn)
+		_draw_order_pips(rect, order)
+		return
+
 	if shape == null:
 		_draw_skip(center, board_def.radius * scale_factor)
 		return
@@ -81,6 +125,40 @@ func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int) -> void:
 	_draw_field(center, scale_factor, shape)
 	_draw_shape(center, scale_factor, shape)
 	_draw_order_pips(rect, order)
+
+# A dot is lit if any colour uses it, and takes that colour; a dot two colours share is
+# drawn in the first of them and sized up so the overlap still reads.
+func _draw_layered_field(center: Vector2, scale_factor: float, turn: int) -> void:
+	draw_arc(center, board_def.radius * scale_factor, 0, TAU, 32, COLOR_FIELD, 1.0)
+
+	for i in range(board_def.node_count):
+		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
+		var users := 0
+		var ink := COLOR_DOT
+
+		for layer in range(layer_count):
+			var shape := layered_solution.get_shape(turn, layer)
+			if shape != null and shape.node_ids.has(i):
+				if users == 0:
+					ink = LayerSystem.get_layer_color(layer, layer_count)
+				users += 1
+
+		if users == 0:
+			draw_circle(pos, 2.0, COLOR_DOT)
+		else:
+			draw_circle(pos, 3.0 if users == 1 else 4.0, ink)
+
+func _draw_layered_shapes(center: Vector2, scale_factor: float, turn: int) -> void:
+	for layer in range(layer_count):
+		var shape := layered_solution.get_shape(turn, layer)
+		if shape == null or shape.geometry == null:
+			continue
+
+		var ink := LayerSystem.get_layer_color(layer, layer_count)
+		for seg in shape.geometry.segments:
+			var p1 := center + (seg.p1 - board_def.center) * scale_factor
+			var p2 := center + (seg.p2 - board_def.center) * scale_factor
+			draw_line(p1, p2, ink, 2.0)
 
 # A dashed ring means "this turn is a deliberate skip", not "nothing planned here".
 func _draw_skip(center: Vector2, radius: float) -> void:
@@ -108,6 +186,27 @@ func _draw_shape(center: Vector2, scale_factor: float, shape: ShapeInstance) -> 
 		var p1 := center + (seg.p1 - board_def.center) * scale_factor
 		var p2 := center + (seg.p2 - board_def.center) * scale_factor
 		draw_line(p1, p2, COLOR_INK, 2.0)
+
+# The quarter this turn wipes, drawn as the field with that slice taken out of it. It
+# sits in the corner of the cell so it reads alongside the shape rather than instead of it.
+func _draw_zone_badge(rect: Rect2, zone: int) -> void:
+	var r: float = rect.size.x * 0.15
+	var center := rect.position + Vector2(rect.size.x - r - 3.0, r + 3.0)
+	var axis := EraserSystem.get_phase_axis(zone)
+
+	# The lit slice: a quarter for the wedge eraser, which is what every tier uses
+	var steps := 10
+	var pts := PackedVector2Array()
+	pts.append(center)
+	var start_angle := axis.angle() - PI * 0.25
+	for i in range(steps + 1):
+		var a := start_angle + (PI * 0.5) * (float(i) / float(steps))
+		pts.append(center + Vector2(cos(a), sin(a)) * r)
+	draw_colored_polygon(pts, Color(COLOR_ZONE.r, COLOR_ZONE.g, COLOR_ZONE.b, 0.55))
+
+	for d in [Vector2(1, 1).normalized(), Vector2(1, -1).normalized()]:
+		draw_line(center - d * r, center + d * r, COLOR_ZONE_FIELD, 1.0)
+	draw_arc(center, r, 0, TAU, 20, COLOR_ZONE, 1.5)
 
 # Pips spell out where this shape falls in the drawing order: one pip for the first shape,
 # two for the second, and so on.

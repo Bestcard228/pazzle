@@ -23,6 +23,24 @@ static func run_all_tests() -> int:
 	else:
 		print("  [FAIL] test_survivable_window_by_eraser_shape")
 
+	if test_erasure_cycles_walk_their_own_order():
+		passed += 1
+		print("  [PASS] test_erasure_cycles_walk_their_own_order")
+	else:
+		print("  [FAIL] test_erasure_cycles_walk_their_own_order")
+
+	if test_every_cycle_clears_the_field_in_four_turns():
+		passed += 1
+		print("  [PASS] test_every_cycle_clears_the_field_in_four_turns")
+	else:
+		print("  [FAIL] test_every_cycle_clears_the_field_in_four_turns")
+
+	if test_half_plane_only_keeps_the_rotations():
+		passed += 1
+		print("  [PASS] test_half_plane_only_keeps_the_rotations")
+	else:
+		print("  [FAIL] test_half_plane_only_keeps_the_rotations")
+
 	return passed
 
 static func test_erasure_regions() -> bool:
@@ -123,3 +141,83 @@ static func _survivor_ratio(board_def: BoardDefinition, max_turns: int, turns_be
 			survivors += 1
 
 	return float(survivors) / float(pool.size())
+
+# The six walks are exactly the distinct cyclic orders of the four quarters, and the start
+# phase keeps naming the opening region rather than a step index under all of them.
+static func test_erasure_cycles_walk_their_own_order() -> bool:
+	if EraserSystem.ERASURE_CYCLES.size() != EraserSystem.CYCLE_COUNT: return false
+
+	# Every listed walk must be a genuine permutation, and no two may be the same walk
+	var seen := {}
+	for cycle in EraserSystem.ERASURE_CYCLES:
+		if not EraserSystem.is_valid_cycle(cycle): return false
+		if seen.has(str(cycle)): return false
+		seen[str(cycle)] = true
+
+	# Clockwise has to stay exactly what it always was
+	var clockwise := EraserSystem.get_cycle(EraserSystem.CYCLE_CLOCKWISE)
+	if clockwise != [EraserSystem.ErasureRegion.TOP, EraserSystem.ErasureRegion.RIGHT,
+			EraserSystem.ErasureRegion.BOTTOM, EraserSystem.ErasureRegion.LEFT]:
+		return false
+
+	for cycle_id in range(EraserSystem.CYCLE_COUNT):
+		var order := EraserSystem.get_cycle(cycle_id)
+		var board := BoardDefinition.new(8, Vector2(64, 64), EraserSystem.ErasureRegion.TOP,
+			EraserSystem.ErasureShape.DIAGONAL_WEDGE, cycle_id)
+
+		for turn in range(8):
+			if EraserSystem.get_phase_for_turn(turn, board) != order[turn % 4]: return false
+
+		# Solving for a finishing zone has to walk that same order backwards
+		for max_turns in range(3, 8):
+			for zone in range(4):
+				var start := EraserSystem.start_phase_for_final(zone, max_turns, cycle_id)
+				var solved := BoardDefinition.new(8, Vector2(64, 64), start,
+					EraserSystem.ErasureShape.DIAGONAL_WEDGE, cycle_id)
+				if EraserSystem.get_final_phase(max_turns, solved) != zone: return false
+
+	return true
+
+# The property every EASY sequence depends on: one quarter per turn, all four covered in
+# any four consecutive turns, so only the last three turns can still be showing when the
+# target is read. If any walk broke this the sequence tree would need new entries, which
+# is exactly what it must not need.
+static func test_every_cycle_clears_the_field_in_four_turns() -> bool:
+	for cycle_id in range(EraserSystem.CYCLE_COUNT):
+		for start in range(4):
+			var board := BoardDefinition.new(8, Vector2(64, 64), start,
+				EraserSystem.ErasureShape.DIAGONAL_WEDGE, cycle_id)
+			for first_turn in range(6):
+				var covered := {}
+				for turn in range(first_turn, first_turn + 4):
+					covered[EraserSystem.get_phase_for_turn(turn, board)] = true
+				if covered.size() != 4: return false
+
+	return true
+
+# The cycle has to be worth four steps, and that depends on the eraser shape. Two opposite
+# half-planes cover the whole field between them, so a walk that puts opposite quarters
+# back to back clears in two turns under the half-plane eraser -- taking the three turns of
+# history the sequence tree needs with it. Wedges never have that problem.
+static func test_half_plane_only_keeps_the_rotations() -> bool:
+	var wedge_usable := EraserSystem.get_usable_cycles(EraserSystem.ErasureShape.DIAGONAL_WEDGE)
+	if wedge_usable.size() != EraserSystem.CYCLE_COUNT: return false
+
+	var half_usable := EraserSystem.get_usable_cycles(EraserSystem.ErasureShape.HALF_PLANE)
+	if half_usable != [EraserSystem.CYCLE_CLOCKWISE, EraserSystem.CYCLE_COUNTER_CLOCKWISE]:
+		return false
+
+	# Stated the other way round: a usable walk never puts opposite quarters back to back,
+	# wrapping included, and an unusable one does.
+	for cycle_id in range(EraserSystem.CYCLE_COUNT):
+		var order := EraserSystem.get_cycle(cycle_id)
+		var has_opposite_step := false
+		for i in range(EraserSystem.PHASE_COUNT):
+			var here := EraserSystem.get_phase_axis(order[i])
+			var next := EraserSystem.get_phase_axis(order[(i + 1) % EraserSystem.PHASE_COUNT])
+			if here.dot(next) < 0.0:
+				has_opposite_step = true
+		if half_usable.has(cycle_id) == has_opposite_step:
+			return false
+
+	return true

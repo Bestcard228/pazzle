@@ -26,6 +26,60 @@ static func simulate_up_to_turn(solution: PuzzleSolution, board_def: BoardDefini
 
 	return current_drawing.canonicalize()
 
+# --- Layers -------------------------------------------------------------------------
+
+# Each layer is simulated on its own board, because each is erased by its own walk. They
+# are never merged during simulation: once two colours are in one bag of segments there is
+# no telling which erasure should have taken which line, so provenance is kept to the end.
+static func simulate_layers_up_to_turn(
+	solution: LayeredSolution,
+	boards: Array[BoardDefinition],
+	up_to_turn: int
+) -> Array[VectorGeometry]:
+	var results: Array[VectorGeometry] = []
+	if solution == null:
+		return results
+
+	for layer in range(solution.layers.size()):
+		var board: BoardDefinition = boards[layer] if layer < boards.size() else null
+		results.append(simulate_up_to_turn(solution.get_layer(layer), board, up_to_turn))
+
+	return results
+
+static func simulate_layers(
+	solution: LayeredSolution,
+	boards: Array[BoardDefinition]
+) -> Array[VectorGeometry]:
+	var turns: int = solution.max_turns if solution != null else 0
+	return simulate_layers_up_to_turn(solution, boards, turns - 1)
+
+# Layers match when they match colour for colour. Comparing the merged picture instead
+# would let a red line satisfy a green requirement, which is exactly the distinction the
+# mode exists to make.
+static func layers_are_equivalent(a: Array[VectorGeometry], b: Array[VectorGeometry]) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in range(a.size()):
+		if a[i] == null or b[i] == null:
+			return false
+		if not a[i].is_equivalent_to(b[i]):
+			return false
+	return true
+
+static func layers_are_empty(layers: Array[VectorGeometry]) -> bool:
+	for geom in layers:
+		if geom != null and not geom.is_empty():
+			return false
+	return true
+
+# Flattened, for anything that only needs the picture: rendering bounds, emptiness checks.
+static func merge_layers(layers: Array[VectorGeometry]) -> VectorGeometry:
+	var merged := VectorGeometry.new()
+	for geom in layers:
+		if geom != null:
+			merged.merge(geom)
+	return merged.canonicalize()
+
 # The earliest turn at which the running drawing already equals `target`, or -1 if it
 # never does. This is the same comparison the game's victory check makes each turn, so it
 # is the authoritative answer to "when does this puzzle actually finish".
