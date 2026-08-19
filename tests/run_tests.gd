@@ -7,24 +7,28 @@ const TestSolverGenerator = preload("res://tests/test_solver_generator.gd")
 const TestEraseMode = preload("res://tests/test_erase_mode.gd")
 const TestLayers = preload("res://tests/test_layers.gd")
 const TestTutorialClock = preload("res://tests/test_tutorial_clock.gd")
+const TestSession = preload("res://tests/test_session.gd")
 
+# Each suite reports [passed, total], so adding a test does not also mean remembering to
+# bump a number over here. A forgotten bump used to read as a failure that was not one.
 func _init():
 	print("==================================================")
 	print("       SHAPE TIMING PUZZLE - UNIT TESTS           ")
 	print("==================================================")
 
-	const EXPECTED_TOTAL := 44
+	var suites := [
+		TestGeometry, TestErasure, TestSimulator, TestSolverGenerator,
+		TestEraseMode, TestLayers, TestTutorialClock, TestSession,
+	]
 
-	var total_passed := 0
-	total_passed += TestGeometry.run_all_tests()
-	total_passed += TestErasure.run_all_tests()
-	total_passed += TestSimulator.run_all_tests()
-	total_passed += TestSolverGenerator.run_all_tests()
-	total_passed += TestEraseMode.run_all_tests()
-	total_passed += TestLayers.run_all_tests()
-	total_passed += TestTutorialClock.run_all_tests()
+	var passed := 0
+	var total := 0
+	for suite in suites:
+		var result: Array[int] = suite.run_all_tests()
+		passed += result[0]
+		total += result[1]
 
 	print("==================================================")
-	print(" TESTS PASSED: %d / %d" % [total_passed, EXPECTED_TOTAL])
+	print(" TESTS PASSED: %d / %d" % [passed, total])
 	print("==================================================")
-	quit(0 if total_passed == EXPECTED_TOTAL else 1)
+	quit(0 if passed == total else 1)

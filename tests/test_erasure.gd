@@ -1,47 +1,27 @@
 class_name TestErasure
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestErasure ---")
 
-	if test_erasure_regions():
-		passed += 1
-		print("  [PASS] test_erasure_regions")
-	else:
-		print("  [FAIL] test_erasure_regions")
+	var results := {
+		"test_erasure_regions": test_erasure_regions(),
+		"test_wedge_regions": test_wedge_regions(),
+		"test_survivable_window_by_eraser_shape": test_survivable_window_by_eraser_shape(),
+		"test_erasure_cycles_walk_their_own_order": test_erasure_cycles_walk_their_own_order(),
+		"test_every_cycle_clears_the_field_in_four_turns": test_every_cycle_clears_the_field_in_four_turns(),
+		"test_half_plane_only_keeps_the_rotations": test_half_plane_only_keeps_the_rotations(),
+	}
 
-	if test_wedge_regions():
-		passed += 1
-		print("  [PASS] test_wedge_regions")
-	else:
-		print("  [FAIL] test_wedge_regions")
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
+			passed += 1
+			print("  [PASS] %s" % name)
+		else:
+			print("  [FAIL] %s" % name)
 
-	if test_survivable_window_by_eraser_shape():
-		passed += 1
-		print("  [PASS] test_survivable_window_by_eraser_shape")
-	else:
-		print("  [FAIL] test_survivable_window_by_eraser_shape")
-
-	if test_erasure_cycles_walk_their_own_order():
-		passed += 1
-		print("  [PASS] test_erasure_cycles_walk_their_own_order")
-	else:
-		print("  [FAIL] test_erasure_cycles_walk_their_own_order")
-
-	if test_every_cycle_clears_the_field_in_four_turns():
-		passed += 1
-		print("  [PASS] test_every_cycle_clears_the_field_in_four_turns")
-	else:
-		print("  [FAIL] test_every_cycle_clears_the_field_in_four_turns")
-
-	if test_half_plane_only_keeps_the_rotations():
-		passed += 1
-		print("  [PASS] test_half_plane_only_keeps_the_rotations")
-	else:
-		print("  [FAIL] test_half_plane_only_keeps_the_rotations")
-
-	return passed
+	return [passed, results.size()]
 
 static func test_erasure_regions() -> bool:
 	var board_def := BoardDefinition.new(8, Vector2(64, 64))

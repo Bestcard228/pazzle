@@ -11,10 +11,7 @@ extends Control
 
 signal mode_chosen(story: bool)
 
-const COLOR_PLATE := Color(0.12, 0.14, 0.22, 0.9)
 const COLOR_EDGE := Color(0.30, 0.40, 0.60, 0.5)
-const COLOR_STORY := Color(0.40, 0.70, 1.00)
-const COLOR_DEBUG := Color(0.55, 0.60, 0.72)
 
 @onready var btn_story: Button = $BtnStory
 @onready var btn_debug: Button = $BtnDebug

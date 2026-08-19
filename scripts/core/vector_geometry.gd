@@ -113,15 +113,3 @@ func is_equivalent_to(other: VectorGeometry, tol: float = EPSILON) -> bool:
 			return false
 
 	return true
-
-func get_bounding_box() -> Rect2:
-	if segments.is_empty():
-		return Rect2()
-	var min_p := Vector2(INF, INF)
-	var max_p := Vector2(-INF, -INF)
-	for seg in segments:
-		min_p.x = min(min_p.x, min(seg.p1.x, seg.p2.x))
-		min_p.y = min(min_p.y, min(seg.p1.y, seg.p2.y))
-		max_p.x = max(max_p.x, max(seg.p1.x, seg.p2.x))
-		max_p.y = max(max_p.y, max(seg.p1.y, seg.p2.y))
-	return Rect2(min_p, max_p - min_p)

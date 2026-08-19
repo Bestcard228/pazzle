@@ -1,17 +1,22 @@
 class_name TestSimulator
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestSimulator ---")
 
-	if test_simulation():
-		passed += 1
-		print("  [PASS] test_simulation")
-	else:
-		print("  [FAIL] test_simulation")
+	var results := {
+		"test_simulation": test_simulation(),
+	}
 
-	return passed
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
+			passed += 1
+			print("  [PASS] %s" % name)
+		else:
+			print("  [FAIL] %s" % name)
+
+	return [passed, results.size()]
 
 static func test_simulation() -> bool:
 	var board_def := BoardDefinition.new(8, Vector2(64, 64))

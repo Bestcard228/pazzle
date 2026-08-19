@@ -1,131 +1,41 @@
 class_name TestSolverGenerator
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestSolverGenerator ---")
 
-	if test_puzzle_generation():
-		passed += 1
-		print("  [PASS] test_puzzle_generation")
-	else:
-		print("  [FAIL] test_puzzle_generation")
+	var results := {
+		"test_puzzle_generation": test_puzzle_generation(),
+		"test_necessity_validation": test_necessity_validation(),
+		"test_easy_mode_generation": test_easy_mode_generation(),
+		"test_hard_mode_7_turns": test_hard_mode_7_turns(),
+		"test_not_last_turn_only": test_not_last_turn_only(),
+		"test_default_turn_range": test_default_turn_range(),
+		"test_final_zone_variety": test_final_zone_variety(),
+		"test_fixed_turn_count_still_varies_zone": test_fixed_turn_count_still_varies_zone(),
+		"test_star_excluded_from_puzzles": test_star_excluded_from_puzzles(),
+		"test_easy_board_is_fixed": test_easy_board_is_fixed(),
+		"test_never_completed_on_first_turn": test_never_completed_on_first_turn(),
+		"test_last_draw_not_always_final_turn": test_last_draw_not_always_final_turn(),
+		"test_both_eraser_shapes_generate": test_both_eraser_shapes_generate(),
+		"test_easy_sequence_set_is_exactly_six": test_easy_sequence_set_is_exactly_six(),
+		"test_easy_covers_all_six_sequences": test_easy_covers_all_six_sequences(),
+		"test_easy_plus_rotates_opening": test_easy_plus_rotates_opening(),
+		"test_easy_plus_plus_uses_harder_shapes": test_easy_plus_plus_uses_harder_shapes(),
+		"test_medium_chain_structure": test_medium_chain_structure(),
+		"test_medium_stages_are_progressive": test_medium_stages_are_progressive(),
+		"test_every_erasure_cycle_generates_every_tier": test_every_erasure_cycle_generates_every_tier(),
+	}
 
-	if test_necessity_validation():
-		passed += 1
-		print("  [PASS] test_necessity_validation")
-	else:
-		print("  [FAIL] test_necessity_validation")
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
+			passed += 1
+			print("  [PASS] %s" % name)
+		else:
+			print("  [FAIL] %s" % name)
 
-	if test_easy_mode_generation():
-		passed += 1
-		print("  [PASS] test_easy_mode_generation")
-	else:
-		print("  [FAIL] test_easy_mode_generation")
-
-	if test_hard_mode_7_turns():
-		passed += 1
-		print("  [PASS] test_hard_mode_7_turns")
-	else:
-		print("  [FAIL] test_hard_mode_7_turns")
-
-	if test_not_last_turn_only():
-		passed += 1
-		print("  [PASS] test_not_last_turn_only")
-	else:
-		print("  [FAIL] test_not_last_turn_only")
-
-	if test_default_turn_range():
-		passed += 1
-		print("  [PASS] test_default_turn_range")
-	else:
-		print("  [FAIL] test_default_turn_range")
-
-	if test_final_zone_variety():
-		passed += 1
-		print("  [PASS] test_final_zone_variety")
-	else:
-		print("  [FAIL] test_final_zone_variety")
-
-	if test_fixed_turn_count_still_varies_zone():
-		passed += 1
-		print("  [PASS] test_fixed_turn_count_still_varies_zone")
-	else:
-		print("  [FAIL] test_fixed_turn_count_still_varies_zone")
-
-	if test_star_excluded_from_puzzles():
-		passed += 1
-		print("  [PASS] test_star_excluded_from_puzzles")
-	else:
-		print("  [FAIL] test_star_excluded_from_puzzles")
-
-	if test_easy_board_is_fixed():
-		passed += 1
-		print("  [PASS] test_easy_board_is_fixed")
-	else:
-		print("  [FAIL] test_easy_board_is_fixed")
-
-	if test_never_completed_on_first_turn():
-		passed += 1
-		print("  [PASS] test_never_completed_on_first_turn")
-	else:
-		print("  [FAIL] test_never_completed_on_first_turn")
-
-	if test_last_draw_not_always_final_turn():
-		passed += 1
-		print("  [PASS] test_last_draw_not_always_final_turn")
-	else:
-		print("  [FAIL] test_last_draw_not_always_final_turn")
-
-	if test_both_eraser_shapes_generate():
-		passed += 1
-		print("  [PASS] test_both_eraser_shapes_generate")
-	else:
-		print("  [FAIL] test_both_eraser_shapes_generate")
-
-	if test_easy_sequence_set_is_exactly_six():
-		passed += 1
-		print("  [PASS] test_easy_sequence_set_is_exactly_six")
-	else:
-		print("  [FAIL] test_easy_sequence_set_is_exactly_six")
-
-	if test_easy_covers_all_six_sequences():
-		passed += 1
-		print("  [PASS] test_easy_covers_all_six_sequences")
-	else:
-		print("  [FAIL] test_easy_covers_all_six_sequences")
-
-	if test_easy_plus_rotates_opening():
-		passed += 1
-		print("  [PASS] test_easy_plus_rotates_opening")
-	else:
-		print("  [FAIL] test_easy_plus_rotates_opening")
-
-	if test_easy_plus_plus_uses_harder_shapes():
-		passed += 1
-		print("  [PASS] test_easy_plus_plus_uses_harder_shapes")
-	else:
-		print("  [FAIL] test_easy_plus_plus_uses_harder_shapes")
-
-	if test_medium_chain_structure():
-		passed += 1
-		print("  [PASS] test_medium_chain_structure")
-	else:
-		print("  [FAIL] test_medium_chain_structure")
-
-	if test_medium_stages_are_progressive():
-		passed += 1
-		print("  [PASS] test_medium_stages_are_progressive")
-	else:
-		print("  [FAIL] test_medium_stages_are_progressive")
-
-	if test_every_erasure_cycle_generates_every_tier():
-		passed += 1
-		print("  [PASS] test_every_erasure_cycle_generates_every_tier")
-	else:
-		print("  [FAIL] test_every_erasure_cycle_generates_every_tier")
-
-	return passed
+	return [passed, results.size()]
 
 # The erasure order is an ordering, not a tier: every difficulty must still generate a
 # puzzle whose reference solution replays to its own target, under every one of the six

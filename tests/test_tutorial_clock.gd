@@ -1,25 +1,25 @@
 class_name TestTutorialClock
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestTutorialClock ---")
 
-	var checks := {
+	var results := {
 		"test_clock_is_carried_by_the_puzzle": test_clock_is_carried_by_the_puzzle(),
 		"test_lesson_is_a_real_winnable_puzzle": test_lesson_is_a_real_winnable_puzzle(),
 		"test_lesson_teaches_draw_skip_draw": test_lesson_teaches_draw_skip_draw(),
 		"test_lesson_only_accepts_the_shape_it_shows": test_lesson_only_accepts_the_shape_it_shows(),
 	}
 
-	for name in checks.keys():
-		if checks[name]:
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
 			passed += 1
 			print("  [PASS] %s" % name)
 		else:
 			print("  [FAIL] %s" % name)
 
-	return passed
+	return [passed, results.size()]
 
 # The clock is a play-time limit the generated puzzle carries, at any tier and with or
 # without layers. Off is the default, so nothing acquires a clock by accident.

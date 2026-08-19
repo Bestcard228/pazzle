@@ -29,7 +29,6 @@ var upcoming_erasure_phase: int = -1
 var is_cleared: bool = false
 var active_swipe_nodes: Array[int] = []
 var _pulse_t: float = 0.0
-var _press_t: float = 0.0  # Dedicated timer for press effects
 
 # Smooth drawing animation
 var draw_progress: float = 0.0          # How much of the current swipe has been drawn (0-1)
@@ -105,9 +104,6 @@ func _process(delta: float) -> void:
 
 	for node_id in keys_to_remove:
 		active_presses.erase(node_id)
-
-	# Update dedicated press timer for any continuous effects
-	_press_t += delta
 
 	# Commit flash and hint ghost both run themselves out and stop asking for redraws
 	if _commit_flash_t < COMMIT_FLASH_TIME:

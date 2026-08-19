@@ -190,9 +190,6 @@ static func get_erasure_rect_for_phase(phase: int, board_def: BoardDefinition) -
 		_:
 			return Rect2()
 
-static func get_erasure_rect_for_turn(turn: int, board_def: BoardDefinition) -> Rect2:
-	return get_erasure_rect_for_phase(get_phase_for_turn(turn, board_def), board_def)
-
 static func get_region_name(phase: int) -> String:
 	match posmod(phase, PHASE_COUNT):
 		ErasureRegion.TOP: return "TOP"
@@ -200,9 +197,6 @@ static func get_region_name(phase: int) -> String:
 		ErasureRegion.BOTTOM: return "BOTTOM"
 		ErasureRegion.LEFT: return "LEFT"
 		_: return "UNKNOWN"
-
-static func get_region_name_for_turn(turn: int, board_def: BoardDefinition) -> String:
-	return get_region_name(get_phase_for_turn(turn, board_def))
 
 static func get_shape_name(shape: int) -> String:
 	return "X-WEDGE" if shape == ErasureShape.DIAGONAL_WEDGE else "HALF"
@@ -223,17 +217,6 @@ static func start_phase_for_final(final_phase: int, max_turns: int,
 	if final_index < 0:
 		final_index = 0
 	return order[posmod(final_index - (max_turns - 1), PHASE_COUNT)]
-
-# For a board whose cycle starts at TOP, the turn count that finishes on `final_phase`.
-# Only valid because `min_turns .. min_turns + 3` is exactly one full cycle, so each
-# length maps to a different finishing zone.
-static func turn_count_for_final_phase_from_top(final_phase: int, min_turns: int,
-		cycle_id: int = CYCLE_CLOCKWISE) -> int:
-	var order := get_cycle(cycle_id)
-	var final_index := order.find(posmod(final_phase, PHASE_COUNT))
-	if final_index < 0:
-		final_index = 0
-	return posmod(final_index - (min_turns - 1), PHASE_COUNT) + min_turns
 
 static func get_cycle_name(cycle_id: int) -> String:
 	return CYCLE_NAMES[posmod(cycle_id, CYCLE_COUNT)]

@@ -1,27 +1,26 @@
 class_name TestEraseMode
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestEraseMode ---")
 
-	var checks := {
+	var results := {
 		"test_schedule_legality_rule": test_schedule_legality_rule(),
 		"test_override_drives_every_consumer": test_override_drives_every_consumer(),
 		"test_legal_orders_are_the_permutations": test_legal_orders_are_the_permutations(),
-		"test_generated_erase_puzzles_are_solvable_and_not_trivial":
-			test_generated_erase_puzzles_are_solvable_and_not_trivial(),
+		"test_generated_erase_puzzles_are_solvable_and_not_trivial": test_generated_erase_puzzles_are_solvable_and_not_trivial(),
 		"test_controller_replays_the_reference_schedule": test_controller_replays_the_reference_schedule(),
 	}
 
-	for name in checks.keys():
-		if checks[name]:
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
 			passed += 1
 			print("  [PASS] %s" % name)
 		else:
 			print("  [FAIL] %s" % name)
 
-	return passed
+	return [passed, results.size()]
 
 # The one rule the mode is built on: a quarter cannot come round again until the other
 # three have gone. Under four turns that is exactly "no zone twice".

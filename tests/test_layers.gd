@@ -1,11 +1,10 @@
 class_name TestLayers
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestLayers ---")
 
-	var checks := {
+	var results := {
 		"test_layer_window_matches_single_layer": test_layer_window_matches_single_layer(),
 		"test_layers_share_the_sequence": test_layers_share_the_sequence(),
 		"test_layered_generation_holds_up": test_layered_generation_holds_up(),
@@ -14,14 +13,15 @@ static func run_all_tests() -> int:
 		"test_a_turn_never_paints_the_same_shape_twice": test_a_turn_never_paints_the_same_shape_twice(),
 	}
 
-	for name in checks.keys():
-		if checks[name]:
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
 			passed += 1
 			print("  [PASS] %s" % name)
 		else:
 			print("  [FAIL] %s" % name)
 
-	return passed
+	return [passed, results.size()]
 
 # The claim the whole mod rests on: a layer is erased once per turn by its own walk, so
 # from that layer's point of view nothing has changed. If the live window differed from

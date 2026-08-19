@@ -597,6 +597,8 @@ static func _take_next_erasure_cycle(shape: int) -> int:
 		_cycle_bag.shuffle()
 	return _cycle_bag.pop_back()
 
+# The pair of reset_zone_rotation, which the tests use to make bag-driven generation
+# repeatable. Kept so a test that needs to pin the walk has the same lever available.
 static func reset_erasure_cycle_rotation() -> void:
 	_cycle_bag.clear()
 

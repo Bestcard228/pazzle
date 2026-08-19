@@ -56,5 +56,3 @@ static func clip_segment_out_region(seg: VectorGeometry.LineSegment2D, region: E
 static func clip_segment_out_rect(seg: VectorGeometry.LineSegment2D, rect: Rect2, tol: float = 0.001) -> Array[VectorGeometry.LineSegment2D]:
 	return clip_segment_out_region(seg, EraseArea.make_rect(rect), tol)
 
-static func point_inside_rect(pt: Vector2, rect: Rect2, tol: float = 0.001) -> bool:
-	return EraseArea.make_rect(rect).contains(pt, tol)

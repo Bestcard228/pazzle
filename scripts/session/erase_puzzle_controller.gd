@@ -89,14 +89,6 @@ func current_geometry() -> VectorGeometry:
 	return PuzzleSimulator.simulate_up_to_turn(
 		puzzle.reference_solution, scheduled_board(), current_turn() - 1)
 
-func geometry_after(zone: int) -> VectorGeometry:
-	if puzzle == null or not can_select(zone):
-		return current_geometry()
-	var preview := solution.duplicate_solution()
-	preview.add_zone(zone)
-	return PuzzleSimulator.simulate_up_to_turn(
-		puzzle.reference_solution, preview.apply_to(puzzle.board_definition),
-		preview.get_turn_count() - 1)
 
 # Whether the schedule so far still matches the one the puzzle was generated from. Used
 # only to decide whether a hint can honestly point at the next intended zone -- a

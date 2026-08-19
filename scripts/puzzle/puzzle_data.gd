@@ -89,11 +89,6 @@ func _init(p_board_def: BoardDefinition = null, p_target: VectorGeometry = null,
 func uses_layers() -> bool:
 	return layer_count > 1 and layered_solution != null
 
-func get_layer_board(layer: int) -> BoardDefinition:
-	if layer >= 0 and layer < layer_boards.size():
-		return layer_boards[layer]
-	return board_definition
-
 # The per-layer goals for `stage`, falling back to the final ones.
 func get_layer_stage_targets(stage: int) -> Array[VectorGeometry]:
 	if stage >= 0 and stage < layer_stage_targets.size():
@@ -106,5 +101,3 @@ func get_layer_stage_targets(stage: int) -> Array[VectorGeometry]:
 func uses_erase_input() -> bool:
 	return input_mode == InputMode.CHOOSE_ERASURES
 
-func get_final_zone_name() -> String:
-	return EraserSystem.get_region_name(final_erasure_zone)

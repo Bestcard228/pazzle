@@ -1,23 +1,23 @@
 class_name TestGeometry
 extends RefCounted
 
-static func run_all_tests() -> int:
-	var passed := 0
+static func run_all_tests() -> Array[int]:
 	print("--- Running TestGeometry ---")
 
-	if test_canonicalization():
-		passed += 1
-		print("  [PASS] test_canonicalization")
-	else:
-		print("  [FAIL] test_canonicalization")
+	var results := {
+		"test_canonicalization": test_canonicalization(),
+		"test_line_clipping": test_line_clipping(),
+	}
 
-	if test_line_clipping():
-		passed += 1
-		print("  [PASS] test_line_clipping")
-	else:
-		print("  [FAIL] test_line_clipping")
+	var passed := 0
+	for name in results.keys():
+		if results[name]:
+			passed += 1
+			print("  [PASS] %s" % name)
+		else:
+			print("  [FAIL] %s" % name)
 
-	return passed
+	return [passed, results.size()]
 
 static func test_canonicalization() -> bool:
 	var g1 := VectorGeometry.new()

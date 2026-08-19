@@ -16,31 +16,25 @@ var active_node_ids: Array[int] = []
 var is_dragging: bool = false
 var is_enabled: bool = true
 var current_touch_pos: Vector2 = Vector2.ZERO
-var node_hitbox_radius: float = 50.0
 
-# Enhanced hitbox system for forgiving input
-const DETECTION_RADIUS := 70.0   # Increased hitbox for easier initial detection
-const ACTIVATION_RADIUS := 45.0  # Confirmation radius for visual feedback
-const SNAP_RADIUS := 55.0        # Guidance radius for auto-linking
-const PRESS_ANIMATION_TIME := 0.2 # Seconds for complete press animations
+# How near a dot counts. DETECTION_RADIUS is the forgiving radius used to decide which dot
+# the finger is nearest; DOT_RADIUS is the tighter one that actually links a dot, and the
+# same radius the finger has to come back inside to unlink the previous one.
+const DETECTION_RADIUS := 70.0
+const DOT_RADIUS := 32.0
 
-# Backtracking hysteresis variables
-var backtrack_target_id := -1       # The node id we are backtracking toward (the node before the last in path)
-var backtrack_progress := 0.0       # How far we've moved toward the backtrack target (in pixels)
-const BACKTRACK_DISTANCE := 22.0    # Reserved: extra grace on top of DOT_RADIUS for backtracking
-const DOT_RADIUS := 32.0            # How close the cursor needs to be to a dot to consider it a possible connection
+# The dot the finger has come back onto, while it is being backtracked away from.
+var backtrack_target_id := -1
+var backtrack_progress := 0.0
 
 var hovered_node_id := -1          # Currently hovered node for guidance
-var press_animation_timers: Dictionary  # node_id -> animation progress (0-1)
 var last_valid_node_id := -1       # Last node that confirmed activation
 var is_backtracking_enabled := true
 var loop_closed: bool = false      # Track if the current shape has been closed into a loop
 
-# Path change constants for _handle_path_update return values
+# _handle_path_update return values
 const PATH_NO_CHANGE := 0
 const PATH_ADDED := 1
-const PATH_REMOVED := 2
-const PATH_COMPLETED := 3
 
 func setup(p_board_def: BoardDefinition, p_screen_positions: Array[Vector2]) -> void:
 	self.board_def = p_board_def
@@ -115,15 +109,8 @@ func _check_node_hit(pos: Vector2) -> void:
 	# Handle path updates with normal addition (no backtracking here - handled in _update_backtracking)
 	var path_changed := _handle_path_update(best_node_id, pos)
 
-	# Manage press animation for the hit node based on path changes
 	if path_changed == PATH_ADDED:
-		# Node was added to path - start/press animation
-		press_animation_timers[best_node_id] = 0.0
 		node_pressed.emit(best_node_id, pos)
-	elif path_changed == PATH_REMOVED:
-		# Node was removed from path (backtracked) - end press animation
-		press_animation_timers.erase(best_node_id)
-		node_released.emit(best_node_id)
 
 	queue_redraw()
 

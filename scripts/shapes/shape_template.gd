@@ -12,13 +12,6 @@ func _init(p_id: String = "", p_name: String = "", p_min_nodes: int = 3, p_close
 	self.min_nodes = p_min_nodes
 	self.is_closed = p_closed
 
-func matches_path(node_ids: Array[int]) -> bool:
-	if node_ids.size() < min_nodes:
-		return false
-	if is_closed:
-		return node_ids.size() >= 4 and node_ids.front() == node_ids.back()
-	else:
-		return node_ids.size() >= 2
 
 func create_instance(node_ids: Array[int], board_def: BoardDefinition) -> ShapeInstance:
 	var geom := VectorGeometry.new()

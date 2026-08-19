@@ -107,11 +107,11 @@ func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int, turn: int) -> voi
 		rect.size.x - pad * 2.0
 	)
 	var center := face.position + face.size * 0.5
-	var scale_factor := (face.size.x * 0.5) / board_def.radius
+	var scale_factor := MiniBoard.scale_for(board_def, face.size.x, 0.5)
 
 	if _uses_layers():
 		if not layered_solution.is_draw_turn(turn):
-			_draw_skip(center, board_def.radius * scale_factor)
+			MiniBoard.draw_skip_ring(self, center, MiniBoard.radius(board_def, scale_factor), COLOR_SKIP)
 			return
 		_draw_layered_field(center, scale_factor, turn)
 		_draw_layered_shapes(center, scale_factor, turn)
@@ -119,7 +119,7 @@ func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int, turn: int) -> voi
 		return
 
 	if shape == null:
-		_draw_skip(center, board_def.radius * scale_factor)
+		MiniBoard.draw_skip_ring(self, center, MiniBoard.radius(board_def, scale_factor), COLOR_SKIP)
 		return
 
 	_draw_field(center, scale_factor, shape)
@@ -129,10 +129,9 @@ func _draw_cell(rect: Rect2, shape: ShapeInstance, order: int, turn: int) -> voi
 # A dot is lit if any colour uses it, and takes that colour; a dot two colours share is
 # drawn in the first of them and sized up so the overlap still reads.
 func _draw_layered_field(center: Vector2, scale_factor: float, turn: int) -> void:
-	draw_arc(center, board_def.radius * scale_factor, 0, TAU, 32, COLOR_FIELD, 1.0)
+	var lit := {}
 
 	for i in range(board_def.node_count):
-		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
 		var users := 0
 		var ink := COLOR_DOT
 
@@ -143,69 +142,38 @@ func _draw_layered_field(center: Vector2, scale_factor: float, turn: int) -> voi
 					ink = LayerSystem.get_layer_color(layer, layer_count)
 				users += 1
 
-		if users == 0:
-			draw_circle(pos, 2.0, COLOR_DOT)
-		else:
-			draw_circle(pos, 3.0 if users == 1 else 4.0, ink)
+		if users > 0:
+			lit[i] = {"color": ink, "size": 3.0 if users == 1 else 4.0}
+
+	MiniBoard.draw_field(self, board_def, center, scale_factor, COLOR_FIELD, COLOR_DOT, 2.0, lit)
 
 func _draw_layered_shapes(center: Vector2, scale_factor: float, turn: int) -> void:
 	for layer in range(layer_count):
 		var shape := layered_solution.get_shape(turn, layer)
-		if shape == null or shape.geometry == null:
+		if shape == null:
 			continue
-
-		var ink := LayerSystem.get_layer_color(layer, layer_count)
-		for seg in shape.geometry.segments:
-			var p1 := center + (seg.p1 - board_def.center) * scale_factor
-			var p2 := center + (seg.p2 - board_def.center) * scale_factor
-			draw_line(p1, p2, ink, 2.0)
-
-# A dashed ring means "this turn is a deliberate skip", not "nothing planned here".
-func _draw_skip(center: Vector2, radius: float) -> void:
-	var segments := 10
-	for i in range(segments):
-		if i % 2 == 1:
-			continue
-		var a0 := TAU * (float(i) / float(segments))
-		var a1 := TAU * (float(i + 1) / float(segments))
-		draw_arc(center, radius, a0, a1, 4, COLOR_SKIP, 2.0)
+		MiniBoard.draw_geometry(self, board_def, center, scale_factor, shape.geometry,
+			LayerSystem.get_layer_color(layer, layer_count), 2.0)
 
 func _draw_field(center: Vector2, scale_factor: float, shape: ShapeInstance) -> void:
-	draw_arc(center, board_def.radius * scale_factor, 0, TAU, 32, COLOR_FIELD, 1.0)
-
-	for i in range(board_def.node_count):
-		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
-		var used := shape.node_ids.has(i)
-		draw_circle(pos, 3.0 if used else 2.0, COLOR_DOT_USED if used else COLOR_DOT)
+	var lit := {}
+	for node_id in shape.node_ids:
+		lit[int(node_id)] = {"color": COLOR_DOT_USED, "size": 3.0}
+	MiniBoard.draw_field(self, board_def, center, scale_factor, COLOR_FIELD, COLOR_DOT, 2.0, lit)
 
 func _draw_shape(center: Vector2, scale_factor: float, shape: ShapeInstance) -> void:
-	if shape.geometry == null:
-		return
-
-	for seg in shape.geometry.segments:
-		var p1 := center + (seg.p1 - board_def.center) * scale_factor
-		var p2 := center + (seg.p2 - board_def.center) * scale_factor
-		draw_line(p1, p2, COLOR_INK, 2.0)
+	MiniBoard.draw_geometry(self, board_def, center, scale_factor, shape.geometry, COLOR_INK, 2.0)
 
 # The quarter this turn wipes, drawn as the field with that slice taken out of it. It
 # sits in the corner of the cell so it reads alongside the shape rather than instead of it.
 func _draw_zone_badge(rect: Rect2, zone: int) -> void:
 	var r: float = rect.size.x * 0.15
 	var center := rect.position + Vector2(rect.size.x - r - 3.0, r + 3.0)
-	var axis := EraserSystem.get_phase_axis(zone)
 
 	# The lit slice: a quarter for the wedge eraser, which is what every tier uses
-	var steps := 10
-	var pts := PackedVector2Array()
-	pts.append(center)
-	var start_angle := axis.angle() - PI * 0.25
-	for i in range(steps + 1):
-		var a := start_angle + (PI * 0.5) * (float(i) / float(steps))
-		pts.append(center + Vector2(cos(a), sin(a)) * r)
-	draw_colored_polygon(pts, Color(COLOR_ZONE.r, COLOR_ZONE.g, COLOR_ZONE.b, 0.55))
-
-	for d in [Vector2(1, 1).normalized(), Vector2(1, -1).normalized()]:
-		draw_line(center - d * r, center + d * r, COLOR_ZONE_FIELD, 1.0)
+	MiniBoard.draw_wedge(self, center, r, EraserSystem.get_phase_axis(zone),
+		Color(COLOR_ZONE.r, COLOR_ZONE.g, COLOR_ZONE.b, 0.55))
+	MiniBoard.draw_division_cross(self, center, r, COLOR_ZONE_FIELD)
 	draw_arc(center, r, 0, TAU, 20, COLOR_ZONE, 1.5)
 
 # Pips spell out where this shape falls in the drawing order: one pip for the first shape,

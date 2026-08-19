@@ -112,9 +112,6 @@ const CHAPTERS: Array = [
 	},
 ]
 
-static func chapter_count() -> int:
-	return CHAPTERS.size()
-
 static func total_tasks() -> int:
 	var total := 0
 	for chapter in CHAPTERS:

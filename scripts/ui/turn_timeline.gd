@@ -139,28 +139,19 @@ func _draw_turn_shape(mini: Rect2, turn: int, dim: float) -> void:
 	var action := shape_solution.get_action(turn)
 	var shape: ShapeInstance = action.shape_instance if action != null else null
 	var center := mini.position + mini.size * 0.5
-	var scale_factor := (mini.size.x * 0.46) / board_def.radius
+	var scale_factor := MiniBoard.scale_for(board_def, mini.size.x, 0.46)
 
 	if shape == null:
-		var radius := board_def.radius * scale_factor
-		for i in range(10):
-			if i % 2 == 1:
-				continue
-			var a0 := TAU * (float(i) / 10.0)
-			var a1 := TAU * (float(i + 1) / 10.0)
-			draw_arc(center, radius, a0, a1, 4, Color(COLOR_SKIP.r, COLOR_SKIP.g, COLOR_SKIP.b, COLOR_SKIP.a * dim), 1.5)
+		MiniBoard.draw_skip_ring(self, center, MiniBoard.radius(board_def, scale_factor),
+			Color(COLOR_SKIP.r, COLOR_SKIP.g, COLOR_SKIP.b, COLOR_SKIP.a * dim), 1.5)
 		return
 
 	for i in range(board_def.node_count):
-		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
-		draw_circle(pos, 1.5, Color(COLOR_DOT.r, COLOR_DOT.g, COLOR_DOT.b, COLOR_DOT.a * dim))
+		draw_circle(MiniBoard.node_position(board_def, center, scale_factor, i), 1.5,
+			Color(COLOR_DOT.r, COLOR_DOT.g, COLOR_DOT.b, COLOR_DOT.a * dim))
 
-	if shape.geometry == null:
-		return
-	for seg in shape.geometry.segments:
-		var p1 := center + (seg.p1 - board_def.center) * scale_factor
-		var p2 := center + (seg.p2 - board_def.center) * scale_factor
-		draw_line(p1, p2, Color(COLOR_SHAPE.r, COLOR_SHAPE.g, COLOR_SHAPE.b, dim), 1.8)
+	MiniBoard.draw_geometry(self, board_def, center, scale_factor, shape.geometry,
+		Color(COLOR_SHAPE.r, COLOR_SHAPE.g, COLOR_SHAPE.b, dim), 1.8)
 
 func _is_wedge_mode() -> bool:
 	return board_def != null and board_def.erasure_shape == EraserSystem.ErasureShape.DIAGONAL_WEDGE

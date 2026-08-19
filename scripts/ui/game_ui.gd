@@ -1,13 +1,9 @@
 class_name GameUI
 extends Control
 
-var current_puzzle: PuzzleData
-var current_solution: PuzzleSolution
-var current_turn: int = 0
-var game_cleared: bool = false
-
-# Which stage of a chained (MEDIUM) puzzle is currently on show.
-var current_stage: int = 0
+# The puzzle in play: its state and the rules for moving it forward. Everything here is
+# presentation on top of it.
+var session := PuzzleSession.new()
 
 # The tier the player picked. MODE_AUTO is not a tier: it reshuffles the ladder every
 # puzzle. `difficulty` is always the tier the puzzle in play was actually generated at.
@@ -22,22 +18,16 @@ var selected_turn_limit: int = 0 # 0 means random 4-7 turns
 # Seconds per turn, 0 for no clock. Running out is not a new outcome -- it is a skip, so
 # the sequences the tree allows are the same with the clock on as with it off.
 var turn_time_limit: float = PuzzleGenerator.NO_TURN_TIME_LIMIT
-var turn_time_left: float = 0.0
-
-# A clock that has not been started cannot run out. Without this an unstarted clock reads
-# as "zero seconds left" and expires the turn on the first frame.
-var _clock_running: bool = false
+var turn_clock := TurnClock.new()
 
 # The lesson. It plays through exactly the same code path as a generated puzzle -- the
 # only difference is that a ghost keeps showing what to do until it is done.
 # Which way in the player took. DEBUG is everything unlocked at once -- the game as it
 # was before the run existed -- and STORY is the ordered set of tasks.
 enum AppMode { MENU, STORY, DEBUG }
-const STORY_SAVE_PATH := "user://story_progress.cfg"
 
 var app_mode: int = AppMode.MENU
-var story_task: int = 0
-var story_task_cleared: bool = false
+var story := StoryRunner.new()
 
 var tutorial: TutorialController
 var tutorial_active: bool = false
@@ -55,13 +45,10 @@ var erasure_cycle_id: int = PuzzleGenerator.SHUFFLED_ERASURE_CYCLE
 # Which half of the puzzle the player supplies. DRAW_SHAPES is the original game; in
 # CHOOSE_ERASURES the shapes are given and the erasure schedule is the puzzle.
 var input_mode: int = PuzzleData.InputMode.DRAW_SHAPES
-var erase_controller: ErasePuzzleController
 
-# Colour layers. Every layer draws on the same turns -- D(r) D(g), S(r) S(g) -- and is
-# eaten by its own walk, so a turn is finished only once every colour has acted.
+# How many colour layers to ask the generator for. Every layer draws on the same turns --
+# D(r) D(g), S(r) S(g) -- and is eaten by its own walk.
 var layer_count: int = 1
-var active_layer: int = 0
-var layered_solution: LayeredSolution
 
 # Revealing the intended shapes and their order is an Easy-mode aid only.
 var solution_revealed: bool = false
@@ -72,10 +59,7 @@ var pixel_filter_enabled: bool = true
 
 # A hint is offered only after the player has been stuck on the same turn for a while,
 # so it never pre-empts someone who is still working the puzzle out.
-const HINT_IDLE_TIME := 20.0
-var idle_time: float = 0.0
-var hint_offered: bool = false
-var _hint_pulse_t: float = 0.0
+var hints := HintDirector.new()
 var _status_override_time: float = 0.0
 
 @onready var drawing_board: DrawingBoard = $DrawingBoard
@@ -143,17 +127,22 @@ func _ready() -> void:
 	input_handler.preview_position_updated.connect(_on_input_preview_position_updated)
 	input_handler.loop_closed_changed.connect(_on_loop_closed_changed)
 
+	hints.session = session
+	session.turn_advanced.connect(_on_turn_advanced)
+	session.layer_advanced.connect(_on_layer_advanced)
+	session.stage_cleared.connect(_on_stage_cleared)
+	session.puzzle_cleared.connect(_on_puzzle_cleared)
+
 	# Scaling a Control pivots on its top-left unless told otherwise, which makes a pop
 	# animation slide instead of grow.
 	label_status.pivot_offset = label_status.size / 2.0
 	target_display.pivot_offset = target_display.size / 2.0
 	checkpoint_display.pivot_offset = checkpoint_display.size / 2.0
 
-	_load_story_progress()
 	_show_menu()
 
 func _process(delta: float) -> void:
-	if current_puzzle == null or app_mode == AppMode.MENU:
+	if session.puzzle == null or app_mode == AppMode.MENU:
 		return
 
 	if _status_override_time > 0.0:
@@ -161,39 +150,32 @@ func _process(delta: float) -> void:
 		if _status_override_time <= 0.0:
 			_restore_status_text()
 
-	if game_cleared or current_turn >= current_puzzle.max_turns:
+	if session.cleared or session.turn >= session.puzzle.max_turns:
 		return
 
-	if uses_clock() and _clock_running:
-		turn_time_left = maxf(0.0, turn_time_left - delta)
-		drawing_board.set_clock_fraction(turn_time_left / current_puzzle.turn_time_limit)
-		if turn_time_left <= 0.0:
-			_clock_running = false
-			_on_turn_time_expired()
-			return
-	elif drawing_board.clock_fraction >= 0.0:
-		drawing_board.set_clock_fraction(-1.0)
+	if turn_clock.tick(delta):
+		_on_turn_time_expired()
+		return
+	drawing_board.set_clock_fraction(turn_clock.fraction())
 
 	if tutorial_active:
 		_tick_tutorial(delta)
 		return
 
-	idle_time += delta
-	if not hint_offered and idle_time >= HINT_IDLE_TIME:
-		_offer_hint()
+	if hints.tick(delta):
+		_raise_hint_lamp()
 
 	# The lamp breathes while it is waiting to be noticed
-	if hint_offered:
-		_hint_pulse_t += delta
-		var pulse := 0.75 + 0.25 * sin(_hint_pulse_t * 3.0)
+	if hints.is_offered:
+		var pulse := hints.pulse()
 		btn_hint.modulate = Color(1.0, 1.0, 1.0, pulse)
 		btn_hint.scale = Vector2.ONE * (0.97 + 0.05 * pulse)
 
 # ERASE mode taps land here rather than in the InputHandler, which stands down entirely.
 func _input(event: InputEvent) -> void:
-	if not uses_erase_input() or current_puzzle == null or game_cleared:
+	if not uses_erase_input() or session.puzzle == null or session.cleared:
 		return
-	if erase_controller == null or erase_controller.is_complete():
+	if session.erase == null or session.erase.is_complete():
 		return
 
 	if event is InputEventMouseMotion:
@@ -209,21 +191,19 @@ func _input(event: InputEvent) -> void:
 
 func _update_zone_hover(pos: Vector2) -> void:
 	var zone := drawing_board.zone_at_position(pos)
-	erase_controller.set_hovered_zone(zone)
-	drawing_board.set_hovered_zone(zone, zone >= 0 and erase_controller.can_select(zone))
+	session.erase.set_hovered_zone(zone)
+	drawing_board.set_hovered_zone(zone, zone >= 0 and session.erase.can_select(zone))
 
 func _try_pick_zone(zone: int) -> void:
 	if zone < 0:
 		return
 
-	if not erase_controller.can_select(zone):
-		_flash_status(erase_controller.rejection_reason(zone), Color(1.0, 0.45, 0.4), 1.6)
+	if not session.can_pick_zone(zone):
+		_flash_status(session.rejection_reason(zone), Color(1.0, 0.45, 0.4), 1.6)
 		return
 
-	erase_controller.select_zone(zone)
-	drawing_board.set_picked_zones(erase_controller.solution.zones)
 	drawing_board.set_hovered_zone(-1, true)
-	_advance_turn()
+	session.pick_zone(zone)
 
 func _on_input_node_pressed(node_id: int, touch_pos: Vector2) -> void:
 	drawing_board._on_node_pressed(node_id, touch_pos)
@@ -257,7 +237,7 @@ func is_easy_mode() -> bool:
 	return PuzzleGenerator.uses_sequence_tree(difficulty)
 
 func uses_clock() -> bool:
-	return current_puzzle != null and current_puzzle.turn_time_limit > 0.0 and not game_cleared
+	return session.puzzle != null and session.puzzle.turn_time_limit > 0.0 and not session.cleared
 
 func _on_timer_cycled() -> void:
 	var choices := PuzzleGenerator.TURN_TIME_CHOICES
@@ -267,9 +247,12 @@ func _on_timer_cycled() -> void:
 	load_new_puzzle()
 
 func _restart_turn_clock() -> void:
-	turn_time_left = current_puzzle.turn_time_limit if current_puzzle != null else 0.0
-	_clock_running = uses_clock() and turn_time_left > 0.0
-	drawing_board.set_clock_fraction(1.0 if _clock_running else -1.0)
+	turn_clock.set_limit(session.puzzle.turn_time_limit if session.puzzle != null else 0.0)
+	if uses_clock():
+		turn_clock.start()
+	else:
+		turn_clock.stop()
+	drawing_board.set_clock_fraction(turn_clock.fraction())
 
 # A turn nobody acted on is a skip, which is a move the rules already have.
 func _on_turn_time_expired() -> void:
@@ -282,18 +265,10 @@ func _on_turn_time_expired() -> void:
 		_restart_turn_clock()
 		return
 
-	if uses_layers():
-		for layer in range(current_puzzle.layer_count):
-			layered_solution.clear_action(current_turn, layer)
-		active_layer = 0
-		drawing_board.set_active_layer(0)
-	else:
-		current_solution.clear_action(current_turn)
-
-	_advance_turn()
+	session.skip_turn()
 
 func uses_layers() -> bool:
-	return current_puzzle != null and current_puzzle.uses_layers()
+	return session.uses_layers()
 
 # ERASE mode asks for a schedule, and with several layers there would be one schedule per
 # colour per turn. That is a mode of its own; until it exists the two settings do not mix,
@@ -363,7 +338,7 @@ func _refresh_reveal() -> void:
 		btn_reveal.visible = true
 		solution_strip.visible = true
 		solution_strip.set_revealed(true)
-		solution_strip.set_erase_order(current_puzzle.erase_order if solution_revealed
+		solution_strip.set_erase_order(session.puzzle.erase_order if solution_revealed
 			else ([] as Array[int]))
 		btn_reveal.set_icon_state(1 if solution_revealed else 0)
 		btn_reveal.tooltip_text = ("Hide the intended erasure order" if solution_revealed
@@ -441,32 +416,26 @@ func load_new_puzzle() -> void:
 	var board_def := BoardDefinition.new(8, Vector2(64, 64), 0, erasure_shape, board_cycle)
 	var req_shapes := 2 if is_easy_mode() else 3
 
+	var puzzle: PuzzleData
 	if effective_layer_count() > LayerSystem.SINGLE_LAYER:
-		current_puzzle = PuzzleGenerator.generate_layered_puzzle(
+		puzzle = PuzzleGenerator.generate_layered_puzzle(
 			board_def, difficulty, effective_layer_count(), 200, input_mode, turn_time_limit)
 	else:
-		current_puzzle = PuzzleGenerator.generate_puzzle(
+		puzzle = PuzzleGenerator.generate_puzzle(
 			board_def, selected_turn_limit, req_shapes, difficulty, 400, erasure_cycle_id,
 			input_mode, turn_time_limit)
-	current_solution = PuzzleSolution.new(current_puzzle.max_turns)
-	layered_solution = LayeredSolution.new(
-		maxi(1, current_puzzle.layer_count), current_puzzle.max_turns)
-	active_layer = 0
-	current_turn = 0
-	current_stage = 0
-	game_cleared = false
 
-	erase_controller = ErasePuzzleController.new(current_puzzle)
-	drawing_board.set_board_definition(current_puzzle.board_definition)
-	drawing_board.set_layer_count(current_puzzle.layer_count)
+	session.setup(puzzle)
+	drawing_board.set_board_definition(session.puzzle.board_definition)
+	drawing_board.set_layer_count(session.puzzle.layer_count)
 	drawing_board.set_active_layer(0)
 	drawing_board.set_cleared(false)
 	drawing_board.clear_hint()
-	input_handler.setup(current_puzzle.board_definition, drawing_board.node_screen_positions)
-	turn_timeline.setup(current_puzzle.board_definition, current_puzzle.max_turns)
+	input_handler.setup(session.puzzle.board_definition, drawing_board.node_screen_positions)
+	turn_timeline.setup(session.puzzle.board_definition, session.puzzle.max_turns)
 	# ERASE mode reads the strip the other way round: the shapes are given, the schedule
 	# is the answer and stays off it until the player commits each turn.
-	turn_timeline.set_shape_mode(uses_erase_input(), current_puzzle.reference_solution)
+	turn_timeline.set_shape_mode(uses_erase_input(), session.puzzle.reference_solution)
 	turn_timeline.set_committed_zones([] as Array[int])
 
 	# The plan stays concealed in both modes: showing it is always a deliberate tap on
@@ -475,12 +444,12 @@ func load_new_puzzle() -> void:
 	input_handler.set_enabled(not uses_erase_input())
 	drawing_board.set_zone_picking(uses_erase_input())
 	drawing_board.set_picked_zones([])
-	solution_strip.set_solution(current_puzzle.reference_solution, current_puzzle.board_definition)
+	solution_strip.set_solution(session.puzzle.reference_solution, session.puzzle.board_definition)
 	# A layered plan is several shapes per turn, so the strip is handed all the colours
 	# rather than layer 0 standing in for the rest.
 	solution_strip.set_layered_solution(
-		current_puzzle.layered_solution if uses_layers() else null,
-		current_puzzle.layer_count)
+		session.puzzle.layered_solution if uses_layers() else null,
+		session.puzzle.layer_count)
 	_refresh_reveal()
 	_refresh_selector_icons()
 
@@ -494,143 +463,103 @@ func load_new_puzzle() -> void:
 # then cleared away: leaving "STEP 1" parked on screen makes it look like it is still
 # something to solve.
 func _refresh_stage_targets() -> void:
-	target_display.set_target(current_puzzle.get_stage_target(current_stage), current_puzzle.board_definition)
+	target_display.set_target(session.puzzle.get_stage_target(session.stage), session.puzzle.board_definition)
 	target_display.set_layer_targets(
-		current_puzzle.get_layer_stage_targets(current_stage) if uses_layers()
+		session.puzzle.get_layer_stage_targets(session.stage) if uses_layers()
 			else ([] as Array[VectorGeometry]),
-		current_puzzle.layer_count)
+		session.puzzle.layer_count)
 	target_display.set_matched(false)
 	_refresh_stage_label()
 
 func _refresh_stage_label() -> void:
-	if game_cleared:
+	if session.cleared:
 		return
 
 	var parts: Array[String] = []
-	if current_puzzle.is_multi_stage():
-		parts.append("STEP %d / %d" % [current_stage + 1, current_puzzle.get_stage_count()])
+	if session.puzzle.is_multi_stage():
+		parts.append("STEP %d / %d" % [session.stage + 1, session.puzzle.get_stage_count()])
 
 	# Which colour the next swipe lands in. The swipe itself is already drawn in that
 	# colour, so this is a confirmation rather than the only cue.
-	if uses_layers() and current_turn < current_puzzle.max_turns:
-		parts.append("PAINT %s" % LayerSystem.get_layer_name(active_layer))
+	if uses_layers() and session.turn < session.puzzle.max_turns:
+		parts.append("PAINT %s" % LayerSystem.get_layer_name(session.active_layer))
 
 	if parts.is_empty():
 		return
 
 	label_status.text = "  -  ".join(parts)
-	label_status.modulate = (LayerSystem.get_layer_color(active_layer, current_puzzle.layer_count)
+	label_status.modulate = (LayerSystem.get_layer_color(session.active_layer, session.puzzle.layer_count)
 		if uses_layers() else Color(0.4, 0.7, 1.0))
 
 func _on_shape_drawn(node_ids: Array[int]) -> void:
-	if game_cleared or current_turn >= current_puzzle.max_turns:
+	if session.cleared or session.turn >= session.puzzle.max_turns:
 		return
 
-	var shape_inst := ShapeDatabase.create_instance_from_path(node_ids, current_puzzle.board_definition)
+	var shape_inst := ShapeDatabase.create_instance_from_path(node_ids, session.puzzle.board_definition)
 	if shape_inst == null:
 		return
 
 	# A lesson only accepts the shape it is showing; anything else replays the ghost
 	# rather than being committed, so the player cannot wander off the rails.
-	if tutorial_active and not tutorial.accepts(node_ids, current_turn):
+	if tutorial_active and not tutorial.accepts(node_ids, session.turn):
 		drawing_board.clear_hint()
 		_tutorial_prompt_t = 0.0
 		return
 
 	# The turn resolves instantly, so the shape gets an echo on its way out
 	drawing_board.flash_committed_shape(node_ids)
-
-	if uses_layers():
-		layered_solution.set_action(current_turn, active_layer, shape_inst)
-		_advance_layer()
-		return
-
-	current_solution.set_action(current_turn, shape_inst)
-	_advance_turn()
+	session.commit_shape(shape_inst)
 
 func _on_skip_pressed() -> void:
-	if game_cleared:
+	if session.cleared:
 		return
 
 	# During the lesson the button only works on the turn the lesson is pointing at it
-	if tutorial_active and not tutorial.is_skip_turn(current_turn):
+	if tutorial_active and not tutorial.is_skip_turn(session.turn):
 		return
 
 	if uses_erase_input():
 		_undo_last_pick()
 		return
 
-	if current_turn >= current_puzzle.max_turns:
-		return
-
-	# S(r) S(g): a skipped turn is skipped in every colour at once, which is what the
-	# sequences say -- the layers never diverge on whether a turn acts.
-	if uses_layers():
-		for layer in range(current_puzzle.layer_count):
-			layered_solution.clear_action(current_turn, layer)
-		active_layer = 0
-		drawing_board.set_active_layer(0)
-		_advance_turn()
-		return
-
-	current_solution.clear_action(current_turn)
-	_advance_turn()
+	session.skip_turn()
 
 func _undo_last_pick() -> void:
-	if erase_controller == null or erase_controller.undo_last() < 0:
+	if not session.undo_pick():
 		return
 
-	current_turn = erase_controller.current_turn()
-	current_stage = current_puzzle.get_stage_for_turn(current_turn) if current_puzzle.is_multi_stage() else 0
-	drawing_board.set_picked_zones(erase_controller.solution.zones)
+	drawing_board.set_picked_zones(session.erase.solution.zones)
 	checkpoint_display.visible = false
 	_withdraw_hint()
 	_refresh_stage_targets()
 	_update_ui()
 
-# A layered turn is finished only when every colour has acted: D(r) then D(g), then the
-# blade takes its quarter from each of them.
-func _advance_layer() -> void:
-	active_layer += 1
-	if active_layer < current_puzzle.layer_count:
-		drawing_board.set_active_layer(active_layer)
-		_update_ui()
-		return
+# The colour in hand moved on, but the turn has not: D(r) is down, D(g) is still to come.
+func _on_layer_advanced(layer: int) -> void:
+	drawing_board.set_active_layer(layer)
+	_update_ui()
 
-	active_layer = 0
-	drawing_board.set_active_layer(0)
-	_advance_turn()
-
-func _advance_turn() -> void:
-	current_turn += 1
+func _on_turn_advanced(_turn: int) -> void:
 	_withdraw_hint()
 	_restart_turn_clock()
+	drawing_board.set_active_layer(session.active_layer)
+	if uses_erase_input():
+		drawing_board.set_picked_zones(session.erase.solution.zones)
 	_update_ui()
-	_check_victory()
 
 	# In ERASE mode running out of turns is not a loss -- the schedule is right there to
 	# be taken apart and rebuilt.
-	if (uses_erase_input() and not game_cleared
-			and current_turn >= current_puzzle.max_turns):
+	if uses_erase_input() and not session.cleared and not session.turns_remain():
 		_flash_status("NOT THE GOAL -- UNDO A PICK OR RESET", Color(1.0, 0.6, 0.35), 3.0)
 
-func _check_victory() -> void:
-	if not _stage_target_reached():
-		return
-
-	# A middle stage clears into the next one instead of ending the puzzle
-	if current_stage < current_puzzle.get_stage_count() - 1:
-		_celebrate_stage()
-		return
-
-	game_cleared = true
+func _on_puzzle_cleared() -> void:
 	if tutorial_active:
 		tutorial_active = false
 		tutorial = null
 		drawing_board.clear_hint()
 		_refresh_selector_availability()
 	if app_mode == AppMode.STORY:
-		story_task_cleared = true
+		story.mark_cleared()
 		_refresh_selector_availability()
 
 	label_status.text = "★ SOLVED ★"
@@ -645,8 +574,7 @@ func _check_victory() -> void:
 
 # The finished step goes green, is held up for a beat on the checkpoint card, and then
 # fades away -- the next goal only arrives once it is gone.
-func _celebrate_stage() -> void:
-	var finished_stage := current_stage
+func _on_stage_cleared(finished_stage: int) -> void:
 
 	target_display.set_matched(true)
 	_pop(target_display, 1.15, 0.3)
@@ -655,11 +583,11 @@ func _celebrate_stage() -> void:
 		target_display.fade_out_finished.connect(_advance_stage, CONNECT_ONE_SHOT)
 
 	checkpoint_title.text = "STEP %d" % (finished_stage + 1)
-	checkpoint_display.set_target(current_puzzle.get_stage_target(finished_stage), current_puzzle.board_definition)
+	checkpoint_display.set_target(session.puzzle.get_stage_target(finished_stage), session.puzzle.board_definition)
 	checkpoint_display.set_layer_targets(
-		current_puzzle.get_layer_stage_targets(finished_stage) if uses_layers()
+		session.puzzle.get_layer_stage_targets(finished_stage) if uses_layers()
 			else ([] as Array[VectorGeometry]),
-		current_puzzle.layer_count)
+		session.puzzle.layer_count)
 	checkpoint_display.set_matched(true)
 	checkpoint_display.visible = true
 	checkpoint_display.start_fade_out()
@@ -673,24 +601,24 @@ func _on_checkpoint_faded() -> void:
 	checkpoint_display.visible = false
 
 func _advance_stage() -> void:
-	current_stage += 1
+	session.advance_stage()
 	_refresh_stage_targets()
 	_update_ui()
 
 func _on_reset_pressed() -> void:
 	# Rewinds the whole chain, not just the stage in progress
-	if erase_controller != null:
-		erase_controller.reset()
+	if session.erase != null:
+		session.erase.reset()
 		drawing_board.set_picked_zones([])
 		drawing_board.set_hovered_zone(-1, true)
-	current_solution = PuzzleSolution.new(current_puzzle.max_turns)
-	layered_solution = LayeredSolution.new(
-		maxi(1, current_puzzle.layer_count), current_puzzle.max_turns)
-	active_layer = 0
+	session.solution = PuzzleSolution.new(session.puzzle.max_turns)
+	session.layered = LayeredSolution.new(
+		maxi(1, session.puzzle.layer_count), session.puzzle.max_turns)
+	session.active_layer = 0
 	drawing_board.set_active_layer(0)
-	current_turn = 0
-	current_stage = 0
-	game_cleared = false
+	session.turn = 0
+	session.stage = 0
+	session.cleared = false
 	_restart_turn_clock()
 	drawing_board.set_cleared(false)
 	drawing_board.clear_hint()
@@ -701,7 +629,7 @@ func _on_reset_pressed() -> void:
 
 func _on_new_puzzle_pressed() -> void:
 	if app_mode == AppMode.STORY:
-		if story_task_cleared:
+		if story.task_cleared:
 			_advance_story_task()
 		else:
 			# Same task, fresh puzzle: a retry, not a way to skip past it
@@ -710,55 +638,19 @@ func _on_new_puzzle_pressed() -> void:
 
 	load_new_puzzle()
 
-# Colour for colour when there are layers, and against the one goal when there are not.
-# Comparing the merged picture instead would let a red line answer for a green one, which
-# is the distinction the mode exists to draw.
-func _stage_target_reached() -> bool:
-	if uses_layers():
-		var standing := PuzzleSimulator.simulate_layers_up_to_turn(
-			layered_solution, current_puzzle.layer_boards, current_turn - 1)
-		return PuzzleSimulator.layers_are_equivalent(
-			standing, current_puzzle.get_layer_stage_targets(current_stage))
-
-	var surviving := PuzzleSimulator.simulate_up_to_turn(
-		_playing_solution(), _active_board(), current_turn - 1)
-	return surviving.is_equivalent_to(current_puzzle.get_stage_target(current_stage))
-
-# The shapes half of the puzzle: the player's own in DRAW mode, the given plan in ERASE.
-func _playing_solution() -> PuzzleSolution:
-	if uses_erase_input():
-		return current_puzzle.reference_solution
-	return current_solution
-
 func _on_active_path_changed(nodes: Array[int]) -> void:
 	drawing_board.set_active_swipe(nodes)
 
-# In ERASE mode the schedule is the player's, so everything downstream -- the simulator,
-# the timeline, the board rendering -- reads it off a board wearing their choices.
-func _active_board() -> BoardDefinition:
-	if uses_erase_input() and erase_controller != null:
-		return erase_controller.scheduled_board()
-	return current_puzzle.board_definition
-
 func _update_ui() -> void:
-	var board := _active_board()
-	var max_t := current_puzzle.max_turns
-	var turns_remain := current_turn < max_t
+	var board := session.active_board()
+	var turns_remain := session.turns_remain()
 
-	# Which turns the player has already committed a shape on
-	var drawn: Array[bool] = []
-	for t in range(max_t):
-		if uses_layers():
-			drawn.append(layered_solution.is_draw_turn(t))
-		else:
-			var act := _playing_solution().get_action(t)
-			drawn.append(act != null and act.shape_instance != null)
-	turn_timeline.set_progress(current_turn, drawn)
-	turn_timeline.set_committed_zones(erase_controller.solution.zones
-		if uses_erase_input() and erase_controller != null else ([] as Array[int]))
+	turn_timeline.set_progress(session.turn, session.drawn_turn_flags())
+	turn_timeline.set_committed_zones(session.erase.solution.zones
+		if uses_erase_input() else ([] as Array[int]))
 
 	# The board carries the state: what is already gone, and what goes next.
-	var last_resolved_turn := current_turn - 1
+	var last_resolved_turn := session.last_resolved_turn()
 	var applied_phase := -1
 	if last_resolved_turn >= 0:
 		applied_phase = EraserSystem.get_phase_for_turn(last_resolved_turn, board)
@@ -766,37 +658,29 @@ func _update_ui() -> void:
 	# Nothing is coming next in ERASE mode until the player says what it is, so the
 	# warning overlay stays off and the hover preview does that job instead.
 	var upcoming_phase := -1
-	if turns_remain and not game_cleared and not uses_erase_input():
-		upcoming_phase = EraserSystem.get_phase_for_turn(current_turn, board)
+	if turns_remain and not session.cleared and not uses_erase_input():
+		upcoming_phase = EraserSystem.get_phase_for_turn(session.turn, board)
 
 	if uses_layers():
-		var boards := current_puzzle.layer_boards
-		drawing_board.set_layer_geometry(PuzzleSimulator.simulate_layers_up_to_turn(
-			layered_solution, boards, last_resolved_turn))
-
+		drawing_board.set_layer_geometry(session.layer_geometry())
 		# One warning per colour: each layer loses a different quarter this turn.
-		var applied_per_layer: Array[int] = []
-		var upcoming_per_layer: Array[int] = []
-		for layer in range(boards.size()):
-			applied_per_layer.append(EraserSystem.get_phase_for_turn(last_resolved_turn, boards[layer])
-				if last_resolved_turn >= 0 else -1)
-			upcoming_per_layer.append(EraserSystem.get_phase_for_turn(current_turn, boards[layer])
-				if turns_remain and not game_cleared else -1)
-		drawing_board.set_layer_erasure_phases(applied_per_layer, upcoming_per_layer)
+		var showing_next := turns_remain and not session.cleared
+		drawing_board.set_layer_erasure_phases(
+			session.layer_phases(last_resolved_turn),
+			session.layer_phases(session.turn) if showing_next else session.layer_phases(-1))
 	else:
-		var current_geom := PuzzleSimulator.simulate_up_to_turn(_playing_solution(), board, last_resolved_turn)
-		drawing_board.set_surviving_geometry(current_geom)
+		drawing_board.set_surviving_geometry(session.surviving_geometry())
 		drawing_board.set_erasure_phases(applied_phase, upcoming_phase)
 
 	# Every turn in ERASE mode erases something, so there is no turn to skip; what the
 	# button is good for there is taking back the last quarter.
 	btn_skip.text = "UNDO PICK" if uses_erase_input() else "SKIP TURN"
 	if uses_erase_input():
-		btn_skip.disabled = game_cleared or current_turn <= 0
+		btn_skip.disabled = session.cleared or session.turn <= 0
 	else:
-		btn_skip.disabled = game_cleared or not turns_remain
+		btn_skip.disabled = session.cleared or not turns_remain
 
-	if not game_cleared and _status_override_time <= 0.0:
+	if not session.cleared and _status_override_time <= 0.0:
 		label_status.text = ""
 		label_status.modulate = Color.WHITE
 		_refresh_stage_label()
@@ -821,7 +705,7 @@ func _refresh_pixel_filter() -> void:
 func _show_menu() -> void:
 	app_mode = AppMode.MENU
 	main_menu.visible = true
-	main_menu.set_story_progress(story_task)
+	main_menu.set_story_progress(story.task_index)
 	hud.visible = false
 	controls.visible = false
 	drawing_board.visible = false
@@ -834,16 +718,15 @@ func _on_menu_pressed() -> void:
 		drawing_board.clear_hint()
 	_show_menu()
 
-func _on_mode_chosen(story: bool) -> void:
-	app_mode = AppMode.STORY if story else AppMode.DEBUG
+func _on_mode_chosen(start_story: bool) -> void:
+	app_mode = AppMode.STORY if start_story else AppMode.DEBUG
 	main_menu.visible = false
 	hud.visible = true
 	controls.visible = true
 	drawing_board.visible = true
 
 	if app_mode == AppMode.STORY:
-		if StoryCampaign.is_finished(story_task):
-			story_task = 0
+		story.restart_if_finished()
 		_start_story_task()
 	else:
 		title_label.text = ""
@@ -852,17 +735,21 @@ func _on_mode_chosen(story: bool) -> void:
 
 # A story task is the same generated puzzle as any other -- the run only decides what to
 # ask the generator for.
+# The run owns the settings for its task, so this applies them as a block and then loads
+# the puzzle exactly the way the sandbox does.
 func _start_story_task() -> void:
-	story_task_cleared = false
-	difficulty = StoryCampaign.difficulty_for_task(story_task)
-	erasure_cycle_id = StoryCampaign.cycle_for_task(story_task)
-	input_mode = StoryCampaign.input_mode_for_task(story_task)
-	layer_count = StoryCampaign.layers_for_task(story_task)
-	turn_time_limit = StoryCampaign.clock_for_task(story_task)
-	selected_mode = difficulty
-	title_label.text = StoryCampaign.progress_label(story_task)
+	story.begin_task()
 
-	if StoryCampaign.is_tutorial_task(story_task):
+	var config := story.current_config()
+	difficulty = int(config["difficulty"])
+	erasure_cycle_id = int(config["cycle"])
+	input_mode = int(config["input_mode"])
+	layer_count = int(config["layers"])
+	turn_time_limit = float(config["clock"])
+	selected_mode = difficulty
+	title_label.text = story.progress_label()
+
+	if story.is_tutorial_task():
 		_start_tutorial()
 		return
 
@@ -870,27 +757,14 @@ func _start_story_task() -> void:
 	load_new_puzzle()
 
 func _advance_story_task() -> void:
-	story_task += 1
-	_save_story_progress()
+	story.advance()
 
-	if StoryCampaign.is_finished(story_task):
+	if story.is_finished():
 		title_label.text = "STORY COMPLETE"
 		_flash_status("★ STORY COMPLETE ★", Color(0.2, 0.95, 0.5), 4.0)
 		return
 
 	_start_story_task()
-
-func _load_story_progress() -> void:
-	var config := ConfigFile.new()
-	if config.load(STORY_SAVE_PATH) != OK:
-		story_task = 0
-		return
-	story_task = clampi(int(config.get_value("story", "task", 0)), 0, StoryCampaign.total_tasks())
-
-func _save_story_progress() -> void:
-	var config := ConfigFile.new()
-	config.set_value("story", "task", story_task)
-	config.save(STORY_SAVE_PATH)
 
 # --- Tutorial ------------------------------------------------------------------------
 
@@ -909,31 +783,24 @@ func _start_tutorial() -> void:
 	tutorial_active = true
 	_tutorial_prompt_t = 0.0
 
-	current_puzzle = lesson_puzzle
-	current_solution = PuzzleSolution.new(current_puzzle.max_turns)
-	layered_solution = LayeredSolution.new(1, current_puzzle.max_turns)
-	erase_controller = ErasePuzzleController.new(current_puzzle)
-	active_layer = 0
-	current_turn = 0
-	current_stage = 0
-	game_cleared = false
+	session.setup(lesson_puzzle)
 
-	drawing_board.set_board_definition(current_puzzle.board_definition)
+	drawing_board.set_board_definition(session.puzzle.board_definition)
 	drawing_board.set_layer_count(1)
 	drawing_board.set_active_layer(0)
 	drawing_board.set_cleared(false)
 	drawing_board.set_zone_picking(false)
 	drawing_board.clear_hint()
-	input_handler.setup(current_puzzle.board_definition, drawing_board.node_screen_positions)
+	input_handler.setup(session.puzzle.board_definition, drawing_board.node_screen_positions)
 	input_handler.set_enabled(true)
-	turn_timeline.setup(current_puzzle.board_definition, current_puzzle.max_turns)
+	turn_timeline.setup(session.puzzle.board_definition, session.puzzle.max_turns)
 	turn_timeline.set_shape_mode(false, null)
 	turn_timeline.set_committed_zones([] as Array[int])
 
 	# Nothing to read, nothing to fiddle with: while the lesson runs the only things that
 	# do anything are the board and the one button it asks for.
 	solution_revealed = false
-	solution_strip.set_solution(current_puzzle.reference_solution, current_puzzle.board_definition)
+	solution_strip.set_solution(session.puzzle.reference_solution, session.puzzle.board_definition)
 	solution_strip.set_layered_solution(null, 1)
 	solution_strip.set_erase_order([] as Array[int])
 	solution_strip.visible = false
@@ -965,17 +832,17 @@ func _refresh_selector_availability() -> void:
 		button.disabled = locked
 	btn_tutorial.disabled = app_mode == AppMode.STORY
 	btn_new_puzzle.disabled = tutorial_active
-	btn_new_puzzle.text = "NEXT" if (app_mode == AppMode.STORY and story_task_cleared) else "NEW PUZZLE"
+	btn_new_puzzle.text = "NEXT" if (app_mode == AppMode.STORY and story.task_cleared) else "NEW PUZZLE"
 
 # The prompt repeats for as long as it is not obeyed. A ghost that keeps retracing the
 # shape is the whole instruction -- there is nothing to read and nothing to dismiss.
 func _tick_tutorial(delta: float) -> void:
 	_tutorial_prompt_t += delta
 
-	if current_turn >= current_puzzle.max_turns:
+	if session.turn >= session.puzzle.max_turns:
 		return
 
-	if tutorial.is_skip_turn(current_turn):
+	if tutorial.is_skip_turn(session.turn):
 		# Nothing to draw this turn: the only thing moving on screen is the button that
 		# passes it, so that is where the eye goes.
 		drawing_board.clear_hint()
@@ -985,13 +852,11 @@ func _tick_tutorial(delta: float) -> void:
 		return
 
 	if not drawing_board.is_hint_showing():
-		drawing_board.show_hint_path(tutorial.expected_path(current_turn))
+		drawing_board.show_hint_path(tutorial.expected_path(session.turn))
 
 # --- Hints -------------------------------------------------------------------------
 
-func _offer_hint() -> void:
-	hint_offered = true
-	_hint_pulse_t = 0.0
+func _raise_hint_lamp() -> void:
 	btn_hint.visible = true
 	btn_hint.pivot_offset = btn_hint.size / 2.0
 	btn_hint.set_icon_state(1)
@@ -1000,114 +865,45 @@ func _offer_hint() -> void:
 	var tween := create_tween()
 	tween.tween_property(btn_hint, "modulate:a", 1.0, 0.4)
 
-# Any resolved turn earns a fresh idle window: the player is making progress again.
 func _withdraw_hint() -> void:
-	idle_time = 0.0
-	hint_offered = false
+	hints.withdraw()
 	btn_hint.visible = false
 	btn_hint.set_icon_state(0)
 	btn_hint.modulate = Color.WHITE
 	btn_hint.scale = Vector2.ONE
 
+# The director decides what the hint is; this is only how it is put on screen.
 func _on_hint_pressed() -> void:
-	idle_time = 0.0
+	var hint := hints.request()
 
-	if uses_erase_input():
-		_show_erase_hint()
-		return
+	match int(hint["kind"]):
+		HintDirector.Kind.DRAW_PATH:
+			drawing_board.show_hint_path(hint["path"])
+			_flash_status("HINT: DRAW THIS IN %s" % LayerSystem.get_layer_name(int(hint["layer"]))
+				if uses_layers() else "HINT: DRAW THIS", Color(1.0, 0.85, 0.35), 2.0)
 
-	# A hint reads off the intended solution, which is only meaningful while the player
-	# is still on that line. Once they have diverged, the honest hint is to start over.
-	if not _follows_reference():
-		_flash_status("HINT: THIS LINE CAN'T REACH THE GOAL -- RESET", Color(1.0, 0.6, 0.35), 3.0)
-		_pop(btn_reset, 1.2, 0.4)
-		_withdraw_hint()
-		return
+		HintDirector.Kind.SKIP_TURN:
+			_flash_status("HINT: SKIP THIS TURN", Color(1.0, 0.85, 0.35), 3.0)
+			_pop(btn_skip, 1.2, 0.4)
 
-	# A layered hint has to point at the shape for the colour being painted right now,
-	# not at layer 0 standing in for all of them.
-	var shape: ShapeInstance = null
-	if uses_layers():
-		shape = current_puzzle.layered_solution.get_shape(current_turn, active_layer)
-	else:
-		var action := current_puzzle.reference_solution.get_action(current_turn)
-		shape = action.shape_instance if action != null else null
+		HintDirector.Kind.ERASE_ZONE:
+			var zone := int(hint["zone"])
+			drawing_board.set_hovered_zone(zone, true)
+			_flash_status("HINT: ERASE %s NEXT" % EraserSystem.get_region_name(zone),
+				Color(1.0, 0.85, 0.35), 2.5)
 
-	if shape == null:
-		_flash_status("HINT: SKIP THIS TURN", Color(1.0, 0.85, 0.35), 3.0)
-		_pop(btn_skip, 1.2, 0.4)
-	else:
-		drawing_board.show_hint_path(shape.node_ids)
-		_flash_status("HINT: DRAW THIS IN %s" % LayerSystem.get_layer_name(active_layer)
-			if uses_layers() else "HINT: DRAW THIS", Color(1.0, 0.85, 0.35), 2.0)
+		HintDirector.Kind.SCHEDULE_DONE:
+			_flash_status("HINT: NOTHING LEFT TO SCHEDULE", Color(1.0, 0.85, 0.35), 2.0)
+
+		HintDirector.Kind.OFF_PLAN:
+			_flash_status("HINT: %s -- %s" % [
+				"THIS SCHEDULE HAS LEFT THE ONE I KNOW" if uses_erase_input()
+					else "THIS LINE CAN'T REACH THE GOAL",
+				"UNDO OR RESET" if uses_erase_input() else "RESET"],
+				Color(1.0, 0.6, 0.35), 3.0)
+			_pop(btn_reset, 1.2, 0.4)
 
 	_withdraw_hint()
-
-# In ERASE mode the hint is the next quarter the generated schedule takes. A different
-# schedule may still reach the target, so once the player has diverged this can no longer
-# be pointed at honestly.
-func _show_erase_hint() -> void:
-	if erase_controller == null or not erase_controller.follows_reference():
-		_flash_status("HINT: THIS SCHEDULE HAS LEFT THE ONE I KNOW -- UNDO OR RESET",
-			Color(1.0, 0.6, 0.35), 3.0)
-		_pop(btn_reset, 1.2, 0.4)
-		_withdraw_hint()
-		return
-
-	var zone := erase_controller.reference_zone_for_current_turn()
-	if zone < 0:
-		_flash_status("HINT: NOTHING LEFT TO SCHEDULE", Color(1.0, 0.85, 0.35), 2.0)
-		_withdraw_hint()
-		return
-
-	drawing_board.set_hovered_zone(zone, true)
-	_flash_status("HINT: ERASE %s NEXT" % EraserSystem.get_region_name(zone),
-		Color(1.0, 0.85, 0.35), 2.5)
-	_withdraw_hint()
-
-# True while every turn the player has resolved matches the intended solution, which is
-# what makes the next intended action a usable hint.
-func _follows_reference() -> bool:
-	if uses_layers():
-		return _layered_follows_reference()
-
-	var reference := current_puzzle.reference_solution
-	if reference == null:
-		return false
-
-	for t in range(current_turn):
-		var mine := current_solution.get_action(t)
-		var theirs := reference.get_action(t)
-		var mine_shape: ShapeInstance = mine.shape_instance if mine != null else null
-		var their_shape: ShapeInstance = theirs.shape_instance if theirs != null else null
-
-		if (mine_shape == null) != (their_shape == null):
-			return false
-		if mine_shape != null and not mine_shape.geometry.is_equivalent_to(their_shape.geometry):
-			return false
-
-	return true
-
-# The same question colour for colour, including the turn in progress: a hint for green
-# is only honest if red has already gone down where the plan says it should.
-func _layered_follows_reference() -> bool:
-	var plan := current_puzzle.layered_solution
-	if plan == null:
-		return false
-
-	for t in range(current_turn + 1):
-		for layer in range(current_puzzle.layer_count):
-			if t == current_turn and layer >= active_layer:
-				break
-
-			var mine := layered_solution.get_shape(t, layer)
-			var theirs := plan.get_shape(t, layer)
-			if (mine == null) != (theirs == null):
-				return false
-			if mine != null and not mine.geometry.is_equivalent_to(theirs.geometry):
-				return false
-
-	return true
 
 # --- Small feedback helpers --------------------------------------------------------
 
@@ -1118,7 +914,7 @@ func _flash_status(text: String, color: Color, hold: float) -> void:
 	_pop(label_status, 1.15, 0.3)
 
 func _restore_status_text() -> void:
-	if game_cleared:
+	if session.cleared:
 		return
 	label_status.text = ""
 	label_status.modulate = Color.WHITE

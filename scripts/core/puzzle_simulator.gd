@@ -66,12 +66,6 @@ static func layers_are_equivalent(a: Array[VectorGeometry], b: Array[VectorGeome
 			return false
 	return true
 
-static func layers_are_empty(layers: Array[VectorGeometry]) -> bool:
-	for geom in layers:
-		if geom != null and not geom.is_empty():
-			return false
-	return true
-
 # Flattened, for anything that only needs the picture: rendering bounds, emptiness checks.
 static func merge_layers(layers: Array[VectorGeometry]) -> VectorGeometry:
 	var merged := VectorGeometry.new()

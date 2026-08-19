@@ -3,19 +3,6 @@ extends RefCounted
 
 static var templates: Dictionary = {}
 
-static func get_all_templates() -> Array[ShapeTemplate]:
-	_ensure_initialized()
-	var list: Array[ShapeTemplate] = []
-	for k in templates.keys():
-		list.append(templates[k])
-	return list
-
-static func get_template(id: String) -> ShapeTemplate:
-	_ensure_initialized()
-	if templates.has(id):
-		return templates[id]
-	return null
-
 static func _ensure_initialized() -> void:
 	if not templates.is_empty():
 		return

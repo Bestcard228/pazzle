@@ -76,7 +76,7 @@ func _draw() -> void:
 		return
 
 	var center := size / 2.0
-	var scale_factor := (size.x * 0.38) / board_def.radius
+	var scale_factor := MiniBoard.scale_for(board_def, size.x, 0.38)
 
 	# Calculate fade alpha if fading out
 	var fade_alpha := 1.0
@@ -93,12 +93,7 @@ func _draw() -> void:
 
 # The board ring and its input nodes, kept faint so the goal still reads as the subject.
 func _draw_field(center: Vector2, scale_factor: float) -> void:
-	var ring_radius := board_def.radius * scale_factor
-	draw_arc(center, ring_radius, 0, TAU, 40, COLOR_FIELD, 1.5)
-
-	for i in range(board_def.node_count):
-		var pos := center + (board_def.get_node_position(i) - board_def.center) * scale_factor
-		draw_circle(pos, 3.0, COLOR_DOT)
+	MiniBoard.draw_field(self, board_def, center, scale_factor, COLOR_FIELD, COLOR_DOT, 3.0)
 
 func _draw_target(center: Vector2, scale_factor: float, fade_alpha: float = 1.0) -> void:
 	if target_geometry == null or target_geometry.is_empty():
@@ -113,21 +108,17 @@ func _draw_target(center: Vector2, scale_factor: float, fade_alpha: float = 1.0)
 				continue
 			var layer_ink := (COLOR_MATCHED if is_matched
 				else LayerSystem.get_layer_color(layer, layer_count))
-			for seg in geom.segments:
-				var lp1 := center + (seg.p1 - board_def.center) * scale_factor
-				var lp2 := center + (seg.p2 - board_def.center) * scale_factor
-				draw_line(lp1, lp2, Color(layer_ink.r, layer_ink.g, layer_ink.b, 0.3 * fade_alpha), 7.0)
-				draw_line(lp1, lp2, Color(layer_ink.r, layer_ink.g, layer_ink.b, fade_alpha), 3.0)
+			MiniBoard.draw_geometry(self, board_def, center, scale_factor, geom,
+				Color(layer_ink.r, layer_ink.g, layer_ink.b, 0.3 * fade_alpha), 7.0)
+			MiniBoard.draw_geometry(self, board_def, center, scale_factor, geom,
+				Color(layer_ink.r, layer_ink.g, layer_ink.b, fade_alpha), 3.0)
 		return
 
 	var ink := COLOR_MATCHED if is_matched else COLOR_TARGET
-	var final_alpha = ink.a * fade_alpha
-	for seg in target_geometry.segments:
-		var p1 := center + (seg.p1 - board_def.center) * scale_factor
-		var p2 := center + (seg.p2 - board_def.center) * scale_factor
-
-		draw_line(p1, p2, Color(ink.r, ink.g, ink.b, 0.3 * fade_alpha), 8.0)
-		draw_line(p1, p2, Color(ink.r, ink.g, ink.b, final_alpha), 4.0)
+	MiniBoard.draw_geometry(self, board_def, center, scale_factor, target_geometry,
+		Color(ink.r, ink.g, ink.b, 0.3 * fade_alpha), 8.0)
+	MiniBoard.draw_geometry(self, board_def, center, scale_factor, target_geometry,
+		Color(ink.r, ink.g, ink.b, ink.a * fade_alpha), 4.0)
 
 func _draw_card_background(rect: Rect2) -> void:
 	var border_color := COLOR_MATCHED if is_matched else Color(0.3, 0.4, 0.6, 0.45)
