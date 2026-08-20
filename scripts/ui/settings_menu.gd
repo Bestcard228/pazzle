@@ -47,8 +47,8 @@ func _ready() -> void:
 	_load_settings()
 
 func _on_apply_pressed() -> void:
-	_language = lang_option.get_selected_text()
-	_mode = mode_option.get_selected_text()
+	_language = lang_option.get_item_text(lang_option.get_selected())
+	_mode = mode_option.get_item_text(mode_option.get_selected())
 	_color_mode = color_mode_check.button_pressed
 	_sound_enabled = sound_check.button_pressed
 	
