@@ -89,13 +89,19 @@ func _load_settings() -> void:
 		_sound_enabled = cfg.getvalue("Settings", "sound_enabled", true)
 		
 		# Update UI to reflect loaded settings
-		lang_option.select(lang_option.find_text(_language))
-		mode_option.select(mode_option.find_text(_mode))
+		lang_option.select(_find_option_index(lang_option, _language))
+		mode_option.select(_find_option_index(mode_option, _mode))
 		color_mode_check.button_pressed = _color_mode
 		sound_check.button_pressed = _sound_enabled
 	
 	# Update labels (and option items if we were translating them) based on the loaded locale
 	_update_ui_labels()
+
+func _find_option_index(option: OptionButton, text: String) -> int:
+    for i in range(option.get_item_count()):
+        if option.get_item_text(i) == text:
+            return i
+    return 0  # fallback to first item
 
 func _update_ui_labels() -> void:
 	# Update the text of the labels using translation keys
