@@ -12,8 +12,12 @@ config_version=5
 
 config/name="Shape Timing Puzzle"
 run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("26.1", "Mobile", "Redot")
+config/features=PackedStringArray("4.1", "Mobile")
 config/icon="res://icon.svg"
+
+[autoload]
+
+AudioManager="*res://scripts/audio/audio_manager.gd"
 
 [display]
 

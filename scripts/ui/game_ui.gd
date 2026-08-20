@@ -22,12 +22,25 @@ var turn_clock := TurnClock.new()
 
 # The lesson. It plays through exactly the same code path as a generated puzzle -- the
 # only difference is that a ghost keeps showing what to do until it is done.
-# Which way in the player took. DEBUG is everything unlocked at once -- the game as it
-# was before the run existed -- and STORY is the ordered set of tasks.
-enum AppMode { MENU, STORY, DEBUG }
+# Which way in the player took.
+#   CLASSIC  a long ladder, difficulty rises every 100 levels, progress saved
+#   STORY    the ordered run of tasks
+#   COLOR    colour layers that never overlap
+#   TIMER    every turn on a clock
+#   MIXED    colours, timer, erasers and chained goals together
+#   DEBUG    everything unlocked at once (the game as it was before the run existed)
+enum AppMode { MENU, CLASSIC, STORY, COLOR, TIMER, MIXED, DEBUG }
+
+const MODE_CLASSIC := AppMode.CLASSIC
+const MODE_STORY := AppMode.STORY
+const MODE_COLOR := AppMode.COLOR
+const MODE_TIMER := AppMode.TIMER
+const MODE_MIXED := AppMode.MIXED
+const MODE_DEBUG := AppMode.DEBUG
 
 var app_mode: int = AppMode.MENU
 var story := StoryRunner.new()
+var classic := ClassicRunner.new()
 
 var tutorial: TutorialController
 var tutorial_active: bool = false
@@ -200,8 +213,10 @@ func _try_pick_zone(zone: int) -> void:
 
 	if not session.can_pick_zone(zone):
 		_flash_status(session.rejection_reason(zone), Color(1.0, 0.45, 0.4), 1.6)
+		AudioManager.play_error()
 		return
 
+	AudioManager.play_erase()
 	drawing_board.set_hovered_zone(-1, true)
 	session.pick_zone(zone)
 
@@ -256,6 +271,7 @@ func _restart_turn_clock() -> void:
 
 # A turn nobody acted on is a skip, which is a move the rules already have.
 func _on_turn_time_expired() -> void:
+	AudioManager.play_timer_expired()
 	drawing_board.flash_clock_expiry()
 	_flash_status("OUT OF TIME", Color(1.0, 0.35, 0.30), 1.2)
 
@@ -504,11 +520,14 @@ func _on_shape_drawn(node_ids: Array[int]) -> void:
 	if tutorial_active and not tutorial.accepts(node_ids, session.turn):
 		drawing_board.clear_hint()
 		_tutorial_prompt_t = 0.0
+		AudioManager.play_error()
 		return
 
 	# The turn resolves instantly, so the shape gets an echo on its way out
+	AudioManager.play_shape_drawn()
 	drawing_board.flash_committed_shape(node_ids)
 	session.commit_shape(shape_inst)
+	AudioManager.play_shape_committed()
 
 func _on_skip_pressed() -> void:
 	if session.cleared:
@@ -522,6 +541,7 @@ func _on_skip_pressed() -> void:
 		_undo_last_pick()
 		return
 
+	AudioManager.play_skip()
 	session.skip_turn()
 
 func _undo_last_pick() -> void:
@@ -561,7 +581,11 @@ func _on_puzzle_cleared() -> void:
 	if app_mode == AppMode.STORY:
 		story.mark_cleared()
 		_refresh_selector_availability()
+	if app_mode == AppMode.CLASSIC:
+		classic.mark_cleared()
+		_refresh_selector_availability()
 
+	AudioManager.play_victory()
 	label_status.text = "★ SOLVED ★"
 	label_status.modulate = Color(0.2, 0.95, 0.5)
 	_pop(label_status, 1.35, 0.45)
@@ -575,6 +599,7 @@ func _on_puzzle_cleared() -> void:
 # The finished step goes green, is held up for a beat on the checkpoint card, and then
 # fades away -- the next goal only arrives once it is gone.
 func _on_stage_cleared(finished_stage: int) -> void:
+	AudioManager.play_stage_clear()
 
 	target_display.set_matched(true)
 	_pop(target_display, 1.15, 0.3)
@@ -606,6 +631,7 @@ func _advance_stage() -> void:
 	_update_ui()
 
 func _on_reset_pressed() -> void:
+	AudioManager.play_click()
 	# Rewinds the whole chain, not just the stage in progress
 	if session.erase != null:
 		session.erase.reset()
@@ -635,7 +661,15 @@ func _on_new_puzzle_pressed() -> void:
 			# Same task, fresh puzzle: a retry, not a way to skip past it
 			_start_story_task()
 		return
+	if app_mode == AppMode.CLASSIC:
+		if classic.level_cleared:
+			_advance_classic_level()
+		else:
+			# Same level, fresh puzzle: a retry, not a way to skip past it
+			_start_classic_level()
+		return
 
+	AudioManager.play_click()
 	load_new_puzzle()
 
 func _on_active_path_changed(nodes: Array[int]) -> void:
@@ -691,6 +725,7 @@ func _on_loop_closed_changed(closed: bool) -> void:
 # --- Pixel filter ------------------------------------------------------------------
 
 func _on_pixel_toggled() -> void:
+	AudioManager.play_click()
 	pixel_filter_enabled = not pixel_filter_enabled
 	_refresh_pixel_filter()
 
@@ -706,6 +741,7 @@ func _show_menu() -> void:
 	app_mode = AppMode.MENU
 	main_menu.visible = true
 	main_menu.set_story_progress(story.task_index)
+	main_menu.set_classic_progress(classic.level)
 	hud.visible = false
 	controls.visible = false
 	drawing_board.visible = false
@@ -716,22 +752,86 @@ func _on_menu_pressed() -> void:
 		tutorial_active = false
 		tutorial = null
 		drawing_board.clear_hint()
+	AudioManager.play_click()
 	_show_menu()
 
-func _on_mode_chosen(start_story: bool) -> void:
-	app_mode = AppMode.STORY if start_story else AppMode.DEBUG
+func _on_mode_chosen(mode: int) -> void:
+	app_mode = mode
 	main_menu.visible = false
 	hud.visible = true
 	controls.visible = true
 	drawing_board.visible = true
 
-	if app_mode == AppMode.STORY:
-		story.restart_if_finished()
-		_start_story_task()
-	else:
-		title_label.text = ""
-		_refresh_selector_availability()
-		load_new_puzzle()
+	# Reset the sandbox settings each time so modes don't bleed into each other
+	erasure_shape = EraserSystem.ErasureShape.DIAGONAL_WEDGE
+	erasure_cycle_id = PuzzleGenerator.SHUFFLED_ERASURE_CYCLE
+	input_mode = PuzzleData.InputMode.DRAW_SHAPES
+	layer_count = LayerSystem.SINGLE_LAYER
+	turn_time_limit = PuzzleGenerator.NO_TURN_TIME_LIMIT
+	solution_revealed = false
+
+	match app_mode:
+		AppMode.CLASSIC:
+			_start_classic_level()
+		AppMode.STORY:
+			story.restart_if_finished()
+			_start_story_task()
+		AppMode.COLOR:
+			# Colour mode: non-overlapping layers
+			layer_count = 2
+			title_label.text = "COLOR MODE"
+			_refresh_selector_availability()
+			load_new_puzzle()
+		AppMode.TIMER:
+			# Timer mode: every turn has a clock
+			turn_time_limit = 12.0
+			title_label.text = "TIMER MODE"
+			_refresh_selector_availability()
+			load_new_puzzle()
+		AppMode.MIXED:
+			# Mixed: colours, timer and erasers together
+			layer_count = 2
+			turn_time_limit = 12.0
+			input_mode = (PuzzleData.InputMode.CHOOSE_ERASURES
+				if (classic.level % 3 == 0) else PuzzleData.InputMode.DRAW_SHAPES)
+			title_label.text = "MIXED MODE"
+			_refresh_selector_availability()
+			load_new_puzzle()
+		AppMode.DEBUG:
+			title_label.text = ""
+			_refresh_selector_availability()
+			load_new_puzzle()
+
+# --- Classic ladder ---------------------------------------------------------------
+
+func _start_classic_level() -> void:
+	classic.begin_level()
+	var config := classic.current_config()
+	var level := int(config["level"])
+	difficulty = int(config["difficulty"])
+	erasure_cycle_id = int(config["cycle"])
+	input_mode = int(config["input_mode"])
+	layer_count = int(config["layers"])
+	turn_time_limit = float(config["clock"])
+	selected_mode = difficulty
+	title_label.text = classic.progress_label()
+
+	_refresh_selector_availability()
+	load_new_puzzle()
+
+	# Tutorial levels play the same game, but the intended solution is always shown and
+	# hints are already lit, so the player can see what a turn is asking for.
+	if classic.is_tutorial_level():
+		solution_revealed = true
+		_refresh_reveal()
+		btn_hint.visible = true
+		btn_hint.set_icon_state(1)
+		btn_hint.modulate = Color.WHITE
+		btn_hint.tooltip_text = "First levels are guided -- the plan is already on screen"
+
+func _advance_classic_level() -> void:
+	classic.advance()
+	_start_classic_level()
 
 # A story task is the same generated puzzle as any other -- the run only decides what to
 # ask the generator for.
@@ -827,12 +927,19 @@ func _refresh_selector_availability() -> void:
 	# The run picks the settings for each task, so they are on show but not on offer;
 	# during the lesson nothing is, except the button it is pointing at.
 	var locked := tutorial_active or app_mode == AppMode.STORY
+	if app_mode == AppMode.CLASSIC:
+		locked = true
 	for button in [btn_mode, btn_turns, btn_eraser, btn_direction, btn_input_mode,
 			btn_layers, btn_timer]:
 		button.disabled = locked
-	btn_tutorial.disabled = app_mode == AppMode.STORY
+	btn_tutorial.disabled = app_mode == AppMode.STORY or app_mode == AppMode.CLASSIC
 	btn_new_puzzle.disabled = tutorial_active
-	btn_new_puzzle.text = "NEXT" if (app_mode == AppMode.STORY and story.task_cleared) else "NEW PUZZLE"
+	if app_mode == AppMode.CLASSIC and classic.level_cleared:
+		btn_new_puzzle.text = "NEXT LEVEL"
+	elif app_mode == AppMode.STORY and story.task_cleared:
+		btn_new_puzzle.text = "NEXT"
+	else:
+		btn_new_puzzle.text = "NEW PUZZLE"
 
 # The prompt repeats for as long as it is not obeyed. A ghost that keeps retracing the
 # shape is the whole instruction -- there is nothing to read and nothing to dismiss.
@@ -874,6 +981,7 @@ func _withdraw_hint() -> void:
 
 # The director decides what the hint is; this is only how it is put on screen.
 func _on_hint_pressed() -> void:
+	AudioManager.play_hint()
 	var hint := hints.request()
 
 	match int(hint["kind"]):
