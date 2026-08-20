@@ -12,6 +12,10 @@ signal settings_cancelled
 @onready var sound_check: CheckBox = $VBoxContainer/HBoxContainerSound/SoundCheck
 @onready var apply_btn: Button = $VBoxContainer/HBoxContainerButtons/ApplyBtn
 @onready var cancel_btn: Button = $VBoxContainer/HBoxContainerButtons/CancelBtn
+@onready var lang_label: Label = $VBoxContainer/HBoxContainerLang/LangLabel
+@onready var mode_label: Label = $VBoxContainer/HBoxContainerMode/ModeLabel
+@onready var color_label: Label = $VBoxContainer/HBoxContainerColor/ColorLabel
+@onready var sound_label: Label = $VBoxContainer/HBoxContainerSound/SoundLabel
 
 # Default settings
 var _language: String = "English"
@@ -68,6 +72,9 @@ func _on_apply_pressed() -> void:
 	if AudioManager:
 		AudioManager.set_sound_enabled(_sound_enabled)
 		AudioManager.play_click()
+	
+	# Update UI labels to reflect new language (in case the language changed)
+	_update_ui_labels()
 
 func _on_cancel_pressed() -> void:
 	settings_cancelled.emit()
@@ -86,10 +93,17 @@ func _load_settings() -> void:
 		mode_option.select(mode_option.find_text(_mode))
 		color_mode_check.button_pressed = _color_mode
 		sound_check.button_pressed = _sound_enabled
+	
+	# Update labels (and option items if we were translating them) based on the loaded locale
+	_update_ui_labels()
 
-func show_settings() -> void:
-	show()
-	# Center the window if it's a WindowDialog
-	if get_parent() is Window:
-		# We'll rely on the popup_centered call from MainMenu
-		pass
+func _update_ui_labels() -> void:
+	# Update the text of the labels using translation keys
+	lang_label.text = tr("Language")
+	mode_label.text = tr("Mode")
+	color_label.text = tr("Color Mode")
+	sound_label.text = tr("Sound")
+	
+	# Note: We are not translating the OptionButton items (language names and mode names) for simplicity.
+	# If you wish to translate them, you would need to replace the items with translated strings.
+	# For now, we leave them as they are (English).
