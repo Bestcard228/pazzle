@@ -9,3 +9,25 @@ Ukrainian,Ukrainian,Украинский,УкраїнСькИ,Ukrainisch
 German,German,Немецкий,НьємЕцкИ,Deutsch
 Story,Story,История,ІсторИя,Geschichte
 History,History,История,ІсторИя,Geschichte
+NEXT LEVEL,NEXT LEVEL,СЛЕДУЮЩИЙ УРОВЕНЬ,НАСТУПНИЙ РІВЕНЫ,NÄCHSTES LEVEL
+NEXT,NEXT,СЛЕДУЮЩИЙ,НАСТУПНИЙ,WEITER
+NEW PUZZLE,NEW PUZZLE,НОВАЯ ГОЛОВОЛОМКА,НОВА ЗАГАДКА,NEUES RÄTSEL
+COLOR MODE,COLOR MODE,ЦВЕТОВОЙ РЕЖИМ,КОЛІРНИЙ РЕЖИМ,FARBMODUS
+TIMER MODE,TIMER MODE,РЕЖИМ ТАЙМЕРА,ТАЙМЕРРЕЖИМ,TIMERMODUS
+MIXED MODE,MIXED MODE,СМЕШАННЫЙ РЕЖИМ,ЗМІШАНИЙ РЕЖИМ,GEMISCHTER MODUS
+OUT OF TIME,OUT OF TIME,ВРЕМЯ ВЫШЛО,ЧАС ВИЙШО,ZEIT ABGELaufen
+Hide the intended erasure order,Hide the intended erasure order,Скрыть намеренный порядок стирания,Приховати плановий порядок стирання,Die vorgesehene Löschreihenfolge ausblenden
+Show the intended erasure order,Show the intended erasure order,Показать намеренный порядок стирания,Показати плановий порядок стирання,Die vorgesehene Löschreihenfolge anzeigen
+Hide the intended solution,Hide the intended solution,Скрыть намеренное решение,Приховати намітне рішення,Die vorgesehene Lösung ausblenden
+Show the intended solution,Show the intended solution,Показать намеренное решение,Показати намітне рішення,Die vorgesehene Lösung anzeigen
+Difficulty: Auto -- shuffles Easy, Easy+, Easy++ and Medium,Difficulty: Auto -- shuffles Easy, Easy+, Easy++ and Medium,Сложность: Авто -- перемешивает Easy, Easy+, Easy++ и Medium,Складність: Авто -- перемішує Easy, Easy+, Easy++ и Medium,Schwierigkeitsgrad: Auto -- mischt Easy, Easy+, Easy++ und Medium
+Difficulty: %s,Difficulty: %s,Сложность: %s,Складність: %s,Schwierigkeitsgrad: %s
+Mode: choose the erasures (the shapes are given),Mode: choose the erasures (the shapes are given),Режим: выберите стирания (фигуры заданы),Режим: виберіть стирания (фігури задані),Modus: Wähle die Löschungen (die Formen sind gegeben)
+Mode: draw the shapes (the erasures are fixed),Mode: draw the shapes (the erasures are fixed),Режим: рисуйте фигуры (стирания заданы),Режим: малюйте фігури (стирания задані),Modus: Zeichne die Formen (die Löschungen sind festgelegt)
+Erasure order: shuffled -- one of the six per puzzle,Erasure order: shuffled -- one of the six per puzzle,Порядок стирания: перемешанный -- один из шести на головоломку,Порядок стирання: перемішаний -- один із шістьох за головоломку,REihenfolge des Löschens: gemischt -- einer von sechs pro Rätsel
+Erasure order: %s (%s),Erasure order: %s (%s),Порядок стирания: %s (%s),Порядок стирання: %s (%s),REihenfolge des Löschens: %s (%s)
+Turns: random 4-7,Turns: random 4-7,Ходы: случайные 4-7,Ходи: випадкові 4-7,Züge: zufällig 4-7
+Pixel-art filter: on,Pixel-art filter: on,Пиксель-арт фильтр: включен,Піксель-арт фільтр: увімкнения,Pixel-Art-Filter: an
+Pixel-art filter: off,Pixel-art filter: off,Пиксель-арт фильтр: выключен,Піксель-арт фільтр: вимкнення,Pixel-Art-Filter: aus
+STEP %d \/ %d,STEP %d \/ %d,ШАГ %d ИЗ %d,КРОК %d З %d,SCHRITT %d VON %d
+PAINT %s,PAINT %s,ЗАПОЛНИТЬ %s,ЗАПОВНИТИ %s,FÜLLEN %s

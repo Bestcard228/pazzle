@@ -71,9 +71,9 @@ func _process(delta: float) -> void:
 # Where the run has got to, so the buttons are not blind doors.
 func set_story_progress(task_index: int) -> void:
 	if StoryCampaign.is_finished(task_index):
-		label_progress.text = "STORY COMPLETE"
+		label_progress.text = tr("STORY COMPLETE")
 		return
-	label_progress.text = "%s  -  TASK %d / %d" % [
+	label_progress.text = tr("%s  -  TASK %d / %d") % [
 		StoryCampaign.title_for_task(task_index),
 		task_index + 1,
 		StoryCampaign.total_tasks(),
@@ -81,7 +81,7 @@ func set_story_progress(task_index: int) -> void:
 
 # Classic ladder progress display.
 func set_classic_progress(level: int) -> void:
-	label_progress.text = "CLASSIC  -  %s" % ClassicCampaign.progress_label(level)
+	label_progress.text = tr("CLASSIC  -  %s") % ClassicCampaign.progress_label(level)
 
 func set_default_progress() -> void:
 	label_progress.text = ""

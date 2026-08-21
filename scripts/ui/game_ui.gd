@@ -280,7 +280,7 @@ func _on_turn_time_expired() -> void:
 	if audio_manager:
 			audio_manager.play_timer_expired()
 	drawing_board.flash_clock_expiry()
-	_flash_status("OUT OF TIME", Color(1.0, 0.35, 0.30), 1.2)
+	_flash_status(tr("OUT OF TIME"), Color(1.0, 0.35, 0.30), 1.2)
 
 	if uses_erase_input():
 		# There is no "skip" that keeps a schedule well formed, so the clock only ever
@@ -364,8 +364,8 @@ func _refresh_reveal() -> void:
 		solution_strip.set_erase_order(session.puzzle.erase_order if solution_revealed
 			else ([] as Array[int]))
 		btn_reveal.set_icon_state(1 if solution_revealed else 0)
-		btn_reveal.tooltip_text = ("Hide the intended erasure order" if solution_revealed
-			else "Show the intended erasure order")
+		btn_reveal.tooltip_text = (tr("Hide the intended erasure order") if solution_revealed
+			else tr("Show the intended erasure order"))
 		return
 
 	# Easy-mode aid only: outside Easy the control is hidden and the strip stays dark.
@@ -377,8 +377,8 @@ func _refresh_reveal() -> void:
 		solution_revealed = false
 
 	btn_reveal.set_icon_state(1 if solution_revealed else 0)
-	btn_reveal.tooltip_text = ("Hide the intended solution" if solution_revealed
-		else "Show the intended solution")
+	btn_reveal.tooltip_text = (tr("Hide the intended solution") if solution_revealed
+		else tr("Show the intended solution"))
 	solution_strip.set_revealed(solution_revealed)
 
 func _refresh_selector_icons() -> void:
@@ -387,27 +387,27 @@ func _refresh_selector_icons() -> void:
 		btn_mode.tooltip_text = "Difficulty: Auto -- shuffles Easy, Easy+, Easy++ and Medium"
 	else:
 		btn_mode.set_icon_state(PuzzleGenerator.get_difficulty_rank(selected_mode))
-		btn_mode.tooltip_text = "Difficulty: %s" % PuzzleGenerator.get_difficulty_name(selected_mode)
+		btn_mode.tooltip_text = tr("Difficulty: %s") % PuzzleGenerator.get_difficulty_name(selected_mode)
 
 	btn_timer.set_icon_state(PuzzleGenerator.TURN_TIME_CHOICES.find(turn_time_limit))
-	btn_timer.tooltip_text = ("Turn clock: off" if turn_time_limit <= 0.0
-		else "Turn clock: %d seconds -- running out counts as a skip" % int(turn_time_limit))
+	btn_timer.tooltip_text = (tr("Turn clock: off") if turn_time_limit <= 0.0
+		else tr("Turn clock: %d seconds -- running out counts as a skip") % int(turn_time_limit))
 
 	btn_layers.set_icon_state(effective_layer_count())
 	btn_layers.disabled = uses_erase_input()
-	btn_layers.tooltip_text = ("Colours: one (the original game)" if layer_count <= 1
-		else "Colours: %d -- every colour is erased by its own order" % layer_count)
+	btn_layers.tooltip_text = (tr("Colours: one (the original game)") if layer_count <= 1
+		else tr("Colours: %d -- every colour is erased by its own order") % layer_count)
 
 	btn_input_mode.set_icon_state(input_mode)
-	btn_input_mode.tooltip_text = ("Mode: choose the erasures (the shapes are given)"
-		if uses_erase_input() else "Mode: draw the shapes (the erasures are fixed)")
+	btn_input_mode.tooltip_text = (tr("Mode: choose the erasures (the shapes are given)")
+		if uses_erase_input() else tr("Mode: draw the shapes (the erasures are fixed)"))
 
 	# -1 is the shuffle face; otherwise the icon draws that walk literally
 	btn_direction.set_icon_state(erasure_cycle_id)
 	if is_cycle_shuffled():
-		btn_direction.tooltip_text = "Erasure order: shuffled -- one of the six per puzzle"
+		btn_direction.tooltip_text = tr("Erasure order: shuffled -- one of the six per puzzle")
 	else:
-		btn_direction.tooltip_text = "Erasure order: %s (%s)" % [
+		btn_direction.tooltip_text = tr("Erasure order: %s (%s)") % [
 			EraserSystem.get_cycle_name(erasure_cycle_id),
 			EraserSystem.get_cycle_description(erasure_cycle_id)]
 
@@ -426,10 +426,10 @@ func _refresh_selector_icons() -> void:
 		return
 
 	btn_turns.set_icon_state(selected_turn_limit)
-	btn_turns.tooltip_text = ("Turns: random 4-7" if selected_turn_limit <= 0
-		else "Turns: %d" % selected_turn_limit)
+	btn_turns.tooltip_text = (tr("Turns: random 4-7") if selected_turn_limit <= 0
+		else tr("Turns: %d") % selected_turn_limit)
 	btn_eraser.set_icon_state(erasure_shape)
-	btn_eraser.tooltip_text = "Eraser: %s" % EraserSystem.get_shape_name(erasure_shape)
+	btn_eraser.tooltip_text = tr("Eraser: %s") % EraserSystem.get_shape_name(erasure_shape)
 
 func load_new_puzzle() -> void:
 	difficulty = _resolve_difficulty()
@@ -500,12 +500,12 @@ func _refresh_stage_label() -> void:
 
 	var parts: Array[String] = []
 	if session.puzzle.is_multi_stage():
-		parts.append("STEP %d / %d" % [session.stage + 1, session.puzzle.get_stage_count()])
+		parts.append(tr("STEP %d / %d") % [session.stage + 1, session.puzzle.get_stage_count()])
 
 	# Which colour the next swipe lands in. The swipe itself is already drawn in that
 	# colour, so this is a confirmation rather than the only cue.
 	if uses_layers() and session.turn < session.puzzle.max_turns:
-		parts.append("PAINT %s" % LayerSystem.get_layer_name(session.active_layer))
+		parts.append(tr("PAINT %s") % LayerSystem.get_layer_name(session.active_layer))
 
 	if parts.is_empty():
 		return
@@ -604,7 +604,7 @@ func _on_puzzle_cleared() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
 			audio_manager.play_victory()
-	label_status.text = "★ SOLVED ★"
+	label_status.text = tr("★ SOLVED ★")
 	label_status.modulate = Color(0.2, 0.95, 0.5)
 	_pop(label_status, 1.35, 0.45)
 	# The win reads off the board itself, not just the label
@@ -627,7 +627,7 @@ func _on_stage_cleared(finished_stage: int) -> void:
 	if not target_display.fade_out_finished.is_connected(_advance_stage):
 		target_display.fade_out_finished.connect(_advance_stage, CONNECT_ONE_SHOT)
 
-	checkpoint_title.text = "STEP %d" % (finished_stage + 1)
+	checkpoint_title.text = tr("STEP %d") % (finished_stage + 1)
 	checkpoint_display.set_target(session.puzzle.get_stage_target(finished_stage), session.puzzle.board_definition)
 	checkpoint_display.set_layer_targets(
 		session.puzzle.get_layer_stage_targets(finished_stage) if uses_layers()
@@ -732,7 +732,7 @@ func _update_ui() -> void:
 
 	# Every turn in ERASE mode erases something, so there is no turn to skip; what the
 	# button is good for there is taking back the last quarter.
-	btn_skip.text = "UNDO PICK" if uses_erase_input() else "SKIP TURN"
+	btn_skip.text = (tr("UNDO PICK") if uses_erase_input() else tr("SKIP TURN"))
 	if uses_erase_input():
 		btn_skip.disabled = session.cleared or session.turn <= 0
 	else:
@@ -758,8 +758,8 @@ func _on_pixel_toggled() -> void:
 func _refresh_pixel_filter() -> void:
 	pixel_filter.visible = pixel_filter_enabled
 	btn_pixel.set_icon_state(1 if pixel_filter_enabled else 0)
-	btn_pixel.tooltip_text = ("Pixel-art filter: on" if pixel_filter_enabled
-		else "Pixel-art filter: off")
+	btn_pixel.tooltip_text = (tr("Pixel-art filter: on") if pixel_filter_enabled
+		else tr("Pixel-art filter: off"))
 
 # --- Menu and the story run ----------------------------------------------------------
 
@@ -807,13 +807,13 @@ func _on_mode_chosen(mode: int) -> void:
 		AppMode.COLOR:
 			# Colour mode: non-overlapping layers
 			layer_count = 2
-			title_label.text = "COLOR MODE"
+			title_label.text = tr("COLOR MODE")
 			_refresh_selector_availability()
 			load_new_puzzle()
 		AppMode.TIMER:
 			# Timer mode: every turn has a clock
 			turn_time_limit = 12.0
-			title_label.text = "TIMER MODE"
+			title_label.text = tr("TIMER MODE")
 			_refresh_selector_availability()
 			load_new_puzzle()
 		AppMode.MIXED:
@@ -822,7 +822,7 @@ func _on_mode_chosen(mode: int) -> void:
 			turn_time_limit = 12.0
 			input_mode = (PuzzleData.InputMode.CHOOSE_ERASURES
 				if (classic.level % 3 == 0) else PuzzleData.InputMode.DRAW_SHAPES)
-			title_label.text = "MIXED MODE"
+			title_label.text = tr("MIXED MODE")
 			_refresh_selector_availability()
 			load_new_puzzle()
 		AppMode.DEBUG:
@@ -855,7 +855,7 @@ func _start_classic_level() -> void:
 		btn_hint.visible = true
 		btn_hint.set_icon_state(1)
 		btn_hint.modulate = Color.WHITE
-		btn_hint.tooltip_text = "First levels are guided -- the plan is already on screen"
+		btn_hint.tooltip_text = tr("First levels are guided -- the plan is already on screen")
 
 func _advance_classic_level() -> void:
 	classic.advance()
@@ -888,8 +888,8 @@ func _advance_story_task() -> void:
 	story.advance()
 
 	if story.is_finished():
-		title_label.text = "STORY COMPLETE"
-		_flash_status("★ STORY COMPLETE ★", Color(0.2, 0.95, 0.5), 4.0)
+		title_label.text = tr("STORY COMPLETE")
+		_flash_status(tr("★ STORY COMPLETE ★"), Color(0.2, 0.95, 0.5), 4.0)
 		return
 
 	_start_story_task()
@@ -963,11 +963,11 @@ func _refresh_selector_availability() -> void:
 	btn_tutorial.disabled = app_mode == AppMode.STORY or app_mode == AppMode.CLASSIC
 	btn_new_puzzle.disabled = tutorial_active
 	if app_mode == AppMode.CLASSIC and classic.level_cleared:
-		btn_new_puzzle.text = "NEXT LEVEL"
+		btn_new_puzzle.text = tr("NEXT LEVEL")
 	elif app_mode == AppMode.STORY and story.task_cleared:
-		btn_new_puzzle.text = "NEXT"
+		btn_new_puzzle.text = tr("NEXT")
 	else:
-		btn_new_puzzle.text = "NEW PUZZLE"
+		btn_new_puzzle.text = tr("NEW PUZZLE")
 
 # The prompt repeats for as long as it is not obeyed. A ghost that keeps retracing the
 # shape is the whole instruction -- there is nothing to read and nothing to dismiss.
@@ -995,7 +995,7 @@ func _raise_hint_lamp() -> void:
 	btn_hint.visible = true
 	btn_hint.pivot_offset = btn_hint.size / 2.0
 	btn_hint.set_icon_state(1)
-	btn_hint.tooltip_text = "Stuck? Show what this turn wants"
+	btn_hint.tooltip_text = tr("Stuck? Show what this turn wants")
 	btn_hint.modulate = Color(1, 1, 1, 0)
 	var tween := create_tween()
 	tween.tween_property(btn_hint, "modulate:a", 1.0, 0.4)
