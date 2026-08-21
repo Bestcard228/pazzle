@@ -70,8 +70,12 @@ func _on_apply_pressed() -> void:
 	
 	# Apply sound setting immediately
 	if AudioManager:
-		AudioManager.set_sound_enabled(_sound_enabled)
-		AudioManager.play_click()
+		var audio_manager = Engine.get_singleton("AudioManager")
+		if audio_manager:
+		    		audio_manager.set_sound_enabled(_sound_enabled)
+		var audio_manager = Engine.get_singleton("AudioManager")
+		if audio_manager:
+		    		audio_manager.play_click()
 	
 	# Update UI labels to reflect new language (in case the language changed)
 	_update_ui_labels()

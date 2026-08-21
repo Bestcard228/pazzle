@@ -53,11 +53,15 @@ func _ready() -> void:
 	settings_panel.settings_cancelled.connect(func(): settings_panel.hide())
 
 func _choose_mode(mode: int) -> void:
-	AudioManager.play_mode_select()
+	var audio_manager = Engine.get_singleton("AudioManager")
+	if audio_manager:
+	    	audio_manager.play_mode_select()
 	mode_chosen.emit(mode)
 
 func _open_settings() -> void:
-	AudioManager.play_menu_open()
+	var audio_manager = Engine.get_singleton("AudioManager")
+	if audio_manager:
+	    	audio_manager.play_menu_open()
 	settings_panel.visible = true
 
 func _process(delta: float) -> void:
@@ -126,4 +130,6 @@ func _on_settings_applied(language: String, mode: String, color_mode: bool, soun
 	# Forward the settings signal so other parts of the game can react.
 	settings_applied.emit(language, mode, color_mode, sound_enabled)
 	# Apply the sound setting immediately
-	AudioManager.set_sound_enabled(sound_enabled)
+	var audio_manager = Engine.get_singleton("AudioManager")
+	if audio_manager:
+	    	audio_manager.set_sound_enabled(sound_enabled)
