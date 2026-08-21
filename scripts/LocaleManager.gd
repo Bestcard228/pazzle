@@ -47,21 +47,26 @@ func _on_settings_applied(language: String, mode: String, color_mode: bool, soun
 		current_locale = language
 		_apply_locale(language)
 		# Forward the signal so other listeners (e.g., MainMenu) still get it
-		get_tree().root.get_node_or_null("Main/MainMenu")?.settings_applied.emit(language, mode, color_mode, sound_enabled)
-
+		var main_menu = get_tree().root.get_node_or_null("Main/MainMenu")
+		if main_menu:
+			main_menu.settings_applied.emit(language, mode, color_mode, sound_enabled)
 func _apply_locale(lang: String) -> void:
 	# If already cached, use it
 	if translation_cache.has(lang):
 		var translation = translation_cache[lang]
-		TranslationServer.set_locale(translation)
+		TranslationServer.clear()
+		TranslationServer.add_translation(translation)
+		TranslationServer.set_locale(lang)
 		print("LocaleManager: Set locale to %s (cached)" % lang)
 		return
 	
-	var translation_path = "res://translations/%s.translation" % lang
-	var translation = TranslationServer.load_translation(translation_path)
+	var translation_path = "res://translations/languages.%s.translation" % lang
+	var translation = ResourceLoader.load(translation_path)
 	if translation:
 		translation_cache[lang] = translation
-		TranslationServer.set_locale(translation)
+		TranslationServer.clear()
+		TranslationServer.add_translation(translation)
+		TranslationServer.set_locale(lang)
 		print("LocaleManager: Loaded and set locale to %s" % lang)
 	else:
 		push_warning("LocaleManager: Translation file not found: %s" % translation_path)
@@ -70,5 +75,6 @@ func _apply_locale(lang: String) -> void:
 			_apply_locale(DEFAULT_LOCALE)
 		else:
 			# Still nothing, set empty locale (English strings)
-			TranslationServer.set_locale(null)
+			TranslationServer.clear()
+			TranslationServer.set_locale(DEFAULT_LOCALE)
 			print("LocaleManager: No translation files available, using original strings.")
