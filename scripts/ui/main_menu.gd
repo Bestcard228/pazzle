@@ -55,13 +55,13 @@ func _ready() -> void:
 func _choose_mode(mode: int) -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_mode_select()
+			audio_manager.play_mode_select()
 	mode_chosen.emit(mode)
 
 func _open_settings() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_menu_open()
+			audio_manager.play_menu_open()
 	settings_panel.visible = true
 
 func _process(delta: float) -> void:
@@ -132,4 +132,4 @@ func _on_settings_applied(language: String, mode: String, color_mode: bool, soun
 	# Apply the sound setting immediately
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.set_sound_enabled(sound_enabled)
+			audio_manager.set_sound_enabled(sound_enabled)

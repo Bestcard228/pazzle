@@ -215,12 +215,12 @@ func _try_pick_zone(zone: int) -> void:
 		_flash_status(session.rejection_reason(zone), Color(1.0, 0.45, 0.4), 1.6)
 		var audio_manager = Engine.get_singleton("AudioManager")
 		if audio_manager:
-		    audio_manager.play_error()
+			audio_manager.play_error()
 		return
 
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    audio_manager.play_erase()
+		audio_manager.play_erase()
 	drawing_board.set_hovered_zone(-1, true)
 	session.pick_zone(zone)
 
@@ -277,7 +277,7 @@ func _restart_turn_clock() -> void:
 func _on_turn_time_expired() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_timer_expired()
+			audio_manager.play_timer_expired()
 	drawing_board.flash_clock_expiry()
 	_flash_status("OUT OF TIME", Color(1.0, 0.35, 0.30), 1.2)
 
@@ -528,18 +528,18 @@ func _on_shape_drawn(node_ids: Array[int]) -> void:
 		_tutorial_prompt_t = 0.0
 		var audio_manager = Engine.get_singleton("AudioManager")
 		if audio_manager:
-		    audio_manager.play_error()
+			audio_manager.play_error()
 		return
 
 	# The turn resolves instantly, so the shape gets an echo on its way out
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_shape_drawn()
+			audio_manager.play_shape_drawn()
 	drawing_board.flash_committed_shape(node_ids)
 	session.commit_shape(shape_inst)
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_shape_committed()
+			audio_manager.play_shape_committed()
 
 func _on_skip_pressed() -> void:
 	if session.cleared:
@@ -555,7 +555,7 @@ func _on_skip_pressed() -> void:
 
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_skip()
+			audio_manager.play_skip()
 	session.skip_turn()
 
 func _undo_last_pick() -> void:
@@ -601,7 +601,7 @@ func _on_puzzle_cleared() -> void:
 
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_victory()
+			audio_manager.play_victory()
 	label_status.text = "★ SOLVED ★"
 	label_status.modulate = Color(0.2, 0.95, 0.5)
 	_pop(label_status, 1.35, 0.45)
@@ -617,7 +617,7 @@ func _on_puzzle_cleared() -> void:
 func _on_stage_cleared(finished_stage: int) -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_stage_clear()
+			audio_manager.play_stage_clear()
 
 	target_display.set_matched(true)
 	_pop(target_display, 1.15, 0.3)
@@ -651,7 +651,7 @@ func _advance_stage() -> void:
 func _on_reset_pressed() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_click()
+			audio_manager.play_click()
 	# Rewinds the whole chain, not just the stage in progress
 	if session.erase != null:
 		session.erase.reset()
@@ -691,7 +691,7 @@ func _on_new_puzzle_pressed() -> void:
 
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_click()
+			audio_manager.play_click()
 	load_new_puzzle()
 
 func _on_active_path_changed(nodes: Array[int]) -> void:
@@ -749,7 +749,7 @@ func _on_loop_closed_changed(closed: bool) -> void:
 func _on_pixel_toggled() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_click()
+			audio_manager.play_click()
 	pixel_filter_enabled = not pixel_filter_enabled
 	_refresh_pixel_filter()
 
@@ -778,7 +778,7 @@ func _on_menu_pressed() -> void:
 		drawing_board.clear_hint()
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_click()
+			audio_manager.play_click()
 	_show_menu()
 
 func _on_mode_chosen(mode: int) -> void:
@@ -1009,7 +1009,7 @@ func _withdraw_hint() -> void:
 func _on_hint_pressed() -> void:
 	var audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-	    	audio_manager.play_hint()
+			audio_manager.play_hint()
 	var hint := hints.request()
 
 	match int(hint["kind"]):
