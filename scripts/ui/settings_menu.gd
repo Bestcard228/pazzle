@@ -67,19 +67,11 @@ func _on_apply_pressed() -> void:
 	# Emit signal
 	settings_applied.emit(_language, _mode, _color_mode, _sound_enabled)
 	hide()
-	
 	# Apply sound setting immediately
-	if AudioManager:
-		var audio_manager = Engine.get_singleton("AudioManager")
-		if audio_manager:
-		    		audio_manager.set_sound_enabled(_sound_enabled)
-		var audio_manager = Engine.get_singleton("AudioManager")
-		if audio_manager:
-		    		audio_manager.play_click()
-	
-	# Update UI labels to reflect new language (in case the language changed)
-	_update_ui_labels()
-
+	var audio_manager = Engine.get_singleton("AudioManager")
+	if audio_manager:
+		audio_manager.set_sound_enabled(_sound_enabled)
+		audio_manager.play_click()
 func _on_cancel_pressed() -> void:
 	settings_cancelled.emit()
 	hide()
@@ -102,10 +94,10 @@ func _load_settings() -> void:
 	_update_ui_labels()
 
 func _find_option_index(option: OptionButton, text: String) -> int:
-    for i in range(option.get_item_count()):
-        if option.get_item_text(i) == text:
-            return i
-    return 0  # fallback to first item
+	for i in range(option.get_item_count()):
+		if option.get_item_text(i) == text:
+			return i
+	return 0  # fallback to first item
 
 func _update_ui_labels() -> void:
 	# Update the text of the labels using translation keys
