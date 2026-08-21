@@ -208,17 +208,18 @@ func _update_zone_hover(pos: Vector2) -> void:
 	drawing_board.set_hovered_zone(zone, zone >= 0 and session.erase.can_select(zone))
 
 func _try_pick_zone(zone: int) -> void:
+	var audio_manager
 	if zone < 0:
 		return
 
 	if not session.can_pick_zone(zone):
 		_flash_status(session.rejection_reason(zone), Color(1.0, 0.45, 0.4), 1.6)
-		var audio_manager = Engine.get_singleton("AudioManager")
+		audio_manager = Engine.get_singleton("AudioManager")
 		if audio_manager:
 			audio_manager.play_error()
 		return
 
-	var audio_manager = Engine.get_singleton("AudioManager")
+	audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
 		audio_manager.play_erase()
 	drawing_board.set_hovered_zone(-1, true)
@@ -233,11 +234,11 @@ func _on_input_node_released(node_id: int) -> void:
 func _on_input_hover_updated(node_id: int) -> void:
 	drawing_board._on_hover_updated(node_id)
 
-func _on_input_position_updated(position: Vector2, is_dragging: bool) -> void:
-	drawing_board._on_input_position_updated(position, is_dragging)
+func _on_input_position_updated(input_pos: Vector2, is_dragging: bool) -> void:
+	drawing_board._on_input_position_updated(input_pos, is_dragging)
 
-func _on_input_preview_position_updated(position: Vector2) -> void:
-	drawing_board._on_input_preview_position_updated(position)
+func _on_input_preview_position_updated(preview_pos: Vector2) -> void:
+	drawing_board._on_input_preview_position_updated(preview_pos)
 
 func _on_turns_cycled() -> void:
 	var next := (TURN_CHOICES.find(selected_turn_limit) + 1) % TURN_CHOICES.size()
@@ -514,6 +515,7 @@ func _refresh_stage_label() -> void:
 		if uses_layers() else Color(0.4, 0.7, 1.0))
 
 func _on_shape_drawn(node_ids: Array[int]) -> void:
+	var audio_manager
 	if session.cleared or session.turn >= session.puzzle.max_turns:
 		return
 
@@ -526,20 +528,20 @@ func _on_shape_drawn(node_ids: Array[int]) -> void:
 	if tutorial_active and not tutorial.accepts(node_ids, session.turn):
 		drawing_board.clear_hint()
 		_tutorial_prompt_t = 0.0
-		var audio_manager = Engine.get_singleton("AudioManager")
+		audio_manager = Engine.get_singleton("AudioManager")
 		if audio_manager:
 			audio_manager.play_error()
 		return
 
 	# The turn resolves instantly, so the shape gets an echo on its way out
-	var audio_manager = Engine.get_singleton("AudioManager")
+	audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-			audio_manager.play_shape_drawn()
+		audio_manager.play_shape_drawn()
 	drawing_board.flash_committed_shape(node_ids)
 	session.commit_shape(shape_inst)
-	var audio_manager = Engine.get_singleton("AudioManager")
+	audio_manager = Engine.get_singleton("AudioManager")
 	if audio_manager:
-			audio_manager.play_shape_committed()
+		audio_manager.play_shape_committed()
 
 func _on_skip_pressed() -> void:
 	if session.cleared:
@@ -833,7 +835,7 @@ func _on_mode_chosen(mode: int) -> void:
 func _start_classic_level() -> void:
 	classic.begin_level()
 	var config := classic.current_config()
-	var level := int(config["level"])
+	var _level := int(config["level"])
 	difficulty = int(config["difficulty"])
 	erasure_cycle_id = int(config["cycle"])
 	input_mode = int(config["input_mode"])

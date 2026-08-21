@@ -58,10 +58,10 @@ func _on_apply_pressed() -> void:
 	if err != OK:
 		# If file doesn't exist, that's fine; we'll create it
 		pass
-	cfg.setvalue("Settings", "language", _language)
-	cfg.setvalue("Settings", "mode", _mode)
-	cfg.setvalue("Settings", "color_mode", _color_mode)
-	cfg.setvalue("Settings", "sound_enabled", _sound_enabled)
+	cfg.set_value("Settings", "language", _language)
+	cfg.set_value("Settings", "mode", _mode)
+	cfg.set_value("Settings", "color_mode", _color_mode)
+	cfg.set_value("Settings", "sound_enabled", _sound_enabled)
 	cfg.save("user://settings.cfg")
 	
 	# Emit signal
@@ -79,10 +79,10 @@ func _on_cancel_pressed() -> void:
 func _load_settings() -> void:
 	var cfg = ConfigFile.new()
 	if cfg.load("user://settings.cfg") == OK:
-		_language = cfg.getvalue("Settings", "language", "English")
-		_mode = cfg.getvalue("Settings", "mode", "Story")
-		_color_mode = cfg.getvalue("Settings", "color_mode", false)
-		_sound_enabled = cfg.getvalue("Settings", "sound_enabled", true)
+		_language = cfg.get_value("Settings", "language", "English")
+		_mode = cfg.get_value("Settings", "mode", "Story")
+		_color_mode = cfg.get_value("Settings", "color_mode", false)
+		_sound_enabled = cfg.get_value("Settings", "sound_enabled", true)
 		
 		# Update UI to reflect loaded settings
 		lang_option.select(_find_option_index(lang_option, _language))
