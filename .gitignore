@@ -1,0 +1,17 @@
+# ---> Godot
+.godot/
+.import/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Vendored codebase-memory-mcp
+codebase-memory-mcp/
+
+# Generated translation files
+translations/*.translation
+
+# Other
+*.csv.import
